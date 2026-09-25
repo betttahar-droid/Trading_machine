@@ -13,12 +13,18 @@ included, see universe_data.py), taker fees + slippage on every trade and real f
   B. TREND-N     the same rules on the top-N universe (entries only while a coin is in the top N)
   C. XSMOM       cross-sectional momentum: weekly, long the strongest / short the weakest quintile
   D. CARRY       funding carry: short the perp + hold spot on the coins paying the highest funding
+  E. ENSEMBLE    trend ensemble after Zarattini, Pagani & Barbon (2025, "Catching Crypto Trends"):
+                 Donchian breakouts over nine lookbacks averaged into one signal, volatility-sized,
+                 on the 8 live coins and on the top 20 by 90-day volume (re-picked monthly)
 
 Parameters for C and D are picked on 2020-06 .. 2024-06 only; 2024-07 .. now is reported separately.
+E uses the paper's published lookbacks and 25% volatility target, not fitted here.
 
-    python -m backend.strategy_lab
+    python -m backend.strategy_lab              # A-D and their combination
+    python -m backend.strategy_lab --ensemble   # E vs. A
 """
 
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
@@ -129,6 +135,51 @@ def carry_returns(funding: pd.DataFrame, member: pd.DataFrame, top_k: int = 5, h
     return ((earned - cost) / (1 + 1 / 3))[START:]
 
 
+# ---------- E: trend ensemble ----------
+ENSEMBLE_LOOKBACKS = (5, 10, 20, 30, 60, 90, 150, 250, 360)
+
+
+def ensemble_returns(panel: Dict[str, pd.DataFrame], funding: pd.DataFrame, member: pd.DataFrame,
+                     target_vol: float = 0.25, vol_days: int = 30, band: float = 0.25) -> pd.Series:
+    """Long-only. For each lookback n: long after a close at the n-day high, flat after a close below
+    the n/2-day low. The nine states are averaged (0..1) and each coin is sized to target_vol / its
+    30-day volatility, split across the coins in the universe. Weights are traded only when they
+    drift more than `band` from target (limits turnover)."""
+    cols = list(member.columns)
+    close, high, low = (panel[k].reindex(columns=cols) for k in ("close", "high", "low"))
+    sig = pd.DataFrame(0.0, index=close.index, columns=cols)
+    for n in ENSEMBLE_LOOKBACKS:
+        upper = high.rolling(n, min_periods=n).max().shift(1)
+        lower = low.rolling(max(n // 2, 2), min_periods=max(n // 2, 2)).min().shift(1)
+        state = np.where(close >= upper, 1.0, np.where(close < lower, 0.0, np.nan))
+        sig += pd.DataFrame(state, index=close.index, columns=cols).ffill().fillna(0.0)
+    sig /= len(ENSEMBLE_LOOKBACKS)
+    ret = close.pct_change(fill_method=None)
+    vol = ret.rolling(vol_days, min_periods=vol_days).std() * np.sqrt(YEAR)
+    n_mem = member.sum(axis=1).clip(lower=1)
+    target = (sig * (target_vol / vol)).where(member, 0.0).fillna(0.0).div(n_mem, axis=0).clip(upper=1.0).to_numpy()
+    w = np.zeros_like(target)
+    cur = np.zeros(target.shape[1])
+    for d in range(len(target)):
+        t = target[d]
+        move = np.abs(t - cur) > band * np.maximum(np.abs(t), 1e-9)
+        cur = np.where(move | (t == 0), t, cur)
+        w[d] = cur
+    held = pd.DataFrame(w, index=close.index, columns=cols).shift(1).fillna(0.0)
+    gross = (held * ret.fillna(0.0)).sum(axis=1)
+    fund = (held * funding.reindex(index=close.index, columns=cols).fillna(0.0)).sum(axis=1)
+    cost = (held - held.shift(1).fillna(0.0)).abs().sum(axis=1) * (FEE + SLIP)
+    return (gross - fund - cost)[START:]
+
+
+def monthly_top(qvol: pd.DataFrame, close: pd.DataFrame, n: int, lookback_days: int = 90) -> pd.DataFrame:
+    """Top n by trailing quote volume, re-picked on the first day of each month and held all month."""
+    vol = qvol.rolling(lookback_days, min_periods=lookback_days).mean().shift(1)
+    first = vol.index.to_series().dt.is_month_start
+    ranks = vol[first].rank(axis=1, ascending=False, method="first") <= n
+    return ranks.reindex(vol.index).ffill().fillna(False).astype(bool) & close.notna()
+
+
 # ---------- growth odds from a daily return stream ----------
 def odds(r: pd.Series, leverages, horizon_days: int = 365, step: int = 14, target: float = 20.0) -> pd.DataFrame:
     """Rolling fresh accounts compounding L x the daily returns: P(20x within 6/12 months), P(-90%)."""
@@ -155,11 +206,41 @@ def odds(r: pd.Series, leverages, horizon_days: int = 365, step: int = 14, targe
     return pd.DataFrame(rows)
 
 
+def ensemble_main(last_month: str, panel: Dict[str, pd.DataFrame]):
+    close = panel["close"]
+    top20 = monthly_top(panel["qvol"], close, 20)
+    top20 = top20[[s for s in top20.columns if top20[s].any()]]
+    member8 = close[UNIVERSE].notna()
+    need = sorted(set(top20.columns) | set(UNIVERSE))
+    with ThreadPoolExecutor(24) as ex:
+        fund = dict(zip(need, ex.map(lambda s: load_funding(s, available_months(s, "1d")), need)))
+    funding = pd.DataFrame({s: f.resample("1D").sum() for s, f in fund.items() if len(f)}).reindex(close.index).fillna(0.0)
+
+    m8 = load_market_bulk("4h", last_month, UNIVERSE, lambda s: available_months(s, "4h"))
+    streams = {"TREND-8 (live, 1% risk)": trend_returns(m8, LIVE),
+               "ENSEMBLE-8": ensemble_returns(panel, funding, member8),
+               "ENSEMBLE-TOP20": ensemble_returns(panel, funding, top20)}
+    print("\nIn-sample 2020-06 .. 2024-06 | out-of-sample 2024-07 .. now")
+    for name, r in streams.items():
+        print(fmt(name, r))
+    df = pd.DataFrame(streams).dropna()
+    print("\nCorrelation of daily returns:")
+    print(df.corr().round(2).to_string())
+    print("\nGrowth odds, fresh account every 2 weeks, 12-month runs, each scaled to TREND-8's in-sample vol, then x L:")
+    ref = df["TREND-8 (live, 1% risk)"][START:SPLIT].std()
+    for name in df.columns:
+        r = df[name] * ref / df[name][START:SPLIT].std()
+        print(f"  {name}")
+        print(odds(r, (1, 2, 3, 5, 7.5, 10)).to_string(index=False, float_format=lambda v: f"{v:.2f}"))
+
+
 def main():
     t0 = time.time()
     last_month = time.strftime("%Y-%m", time.gmtime(time.time() - 32 * 86_400))
     panel = daily_panel(last_month)
     close = panel["close"]
+    if "--ensemble" in sys.argv:
+        return ensemble_main(last_month, panel)
     member = top_by_volume(panel["qvol"], close, TOP_N)
     ever = [s for s in member.columns if member[s].any()]
     print(f"{close.shape[1]} perps, {len(ever)} ever in the top {TOP_N} ({time.time() - t0:.0f}s)", flush=True)
