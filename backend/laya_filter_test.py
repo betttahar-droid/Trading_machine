@@ -23,8 +23,8 @@ from typing import Dict, List
 import numpy as np
 
 from backend.backtest_trend import SPLIT, _ms
-from backend.growth_study import LIVE, WINDOW_START, _date, load_market_bulk
-from backend.trend_strategy import TrendParams, compute_features, entry_signal, exit_on_close, trail_stop
+from backend.growth_study import LIVE, WINDOW_START, _date, load_market_bulk, symbol_trades
+from backend.trend_strategy import compute_features
 
 PROD_QUESTIONS = {"decision": {
     "type": "choice",
@@ -39,42 +39,6 @@ TREND_QUESTIONS = {"continue": {
     "instructions": "Price just broke above its 20-day high. Is this breakout likely to continue into a "
                     "sustained uptrend rather than fail and reverse?",
 }}
-
-
-def symbol_trades(m: dict, f: Dict[str, np.ndarray], p: TrendParams, start_ms: int) -> List[dict]:
-    """One symbol's long trades under backtest_trend.simulate's rules; R = net P&L / initial risk."""
-    bars, trades, pos, pending = m["bars"], [], None, None
-    for i, bar in enumerate(bars):
-        if bar["timestamp"] < start_ms:
-            continue
-        if pending == "exit" and pos:
-            fill = bar["open"] * (1 - p.slippage)
-            pos["pnl"] += fill - pos["entry"] - fill * p.taker_fee
-            trades.append({**pos, "r": pos["pnl"] / pos["risk"]})
-            pos = None
-        elif pending and pending != "exit" and pos is None:
-            fill = bar["open"] * (1 + p.slippage)
-            stop = fill - p.stop_atr * pending["atr"]
-            pos = {"signal_i": pending["i"], "ts": bars[pending["i"]]["timestamp"], "entry": fill, "stop": stop,
-                   "risk": fill - stop, "extreme": fill, "pnl": -fill * p.taker_fee}
-        pending = None
-        if pos:
-            if bar["low"] <= pos["stop"]:
-                fill = min(bar["open"], pos["stop"]) * (1 - p.slippage)
-                pos["pnl"] += fill - pos["entry"] - fill * p.taker_fee
-                trades.append({**pos, "r": pos["pnl"] / pos["risk"]})
-                pos = None
-            else:
-                pos["pnl"] -= m["funding"][i] * bar["close"]
-        if pos:
-            pos["extreme"] = max(pos["extreme"], f["close"][i])
-            if not np.isnan(f["atr"][i]):
-                pos["stop"] = trail_stop("LONG", pos["extreme"], f["atr"][i], pos["stop"], p)
-            if exit_on_close(f, i, "LONG"):
-                pending = "exit"
-        elif entry_signal(f, i, p):
-            pending = {"i": i, "atr": float(f["atr"][i])}
-    return trades
 
 
 def state_text(sym: str, bars: List[dict], i: int) -> str:

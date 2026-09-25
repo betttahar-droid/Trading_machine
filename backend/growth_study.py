@@ -26,7 +26,7 @@ from bisect import bisect_left
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import datetime, timezone
-from typing import Dict, List
+from typing import Callable, Dict, List, Optional
 
 import numpy as np
 import requests
@@ -95,11 +95,14 @@ def _rows(text: str) -> List[List[str]]:
     return [line.split(",") for line in text.splitlines() if line[:1].isdigit()]
 
 
-def load_market_bulk(interval: str, last_month: str) -> Dict[str, dict]:
-    """Same structure as backtest_trend.load_market, built from the monthly archives."""
-    months = _months(last_month)
+def load_market_bulk(interval: str, last_month: str, symbols: Optional[List[str]] = None,
+                     months_fn: Optional[Callable[[str], List[str]]] = None) -> Dict[str, dict]:
+    """Same structure as backtest_trend.load_market, built from the monthly archives.
+
+    months_fn(symbol) can list the months a symbol has data for, to skip requests before its listing."""
     market = {}
-    for sym in UNIVERSE:
+    for sym in symbols or UNIVERSE:
+        months = [m for m in months_fn(sym) if m <= last_month] if months_fn else _months(last_month)
         with ThreadPoolExecutor(12) as ex:
             k_txt = list(ex.map(lambda m: _bulk_csv("klines", sym, m, interval), months))
             f_txt = list(ex.map(lambda m: _bulk_csv("funding", sym, m, interval), months))
@@ -131,8 +134,12 @@ def load_market_bulk(interval: str, last_month: str) -> Dict[str, dict]:
 
 
 def run_account(market: Dict[str, dict], feats: Dict[str, dict], timeline: List[int], p: TrendParams,
-                start_ms: int, end_ms: int, liquidation: bool = True) -> dict:
-    """backtest_trend.simulate's fill model for one long-only account, plus liquidation and target tracking."""
+                start_ms: int, end_ms: int, liquidation: bool = True,
+                can_enter: Optional[Callable[[str, int], bool]] = None, curve: Optional[list] = None) -> dict:
+    """backtest_trend.simulate's fill model for one long-only account, plus liquidation and target tracking.
+
+    can_enter(symbol, bar_ts) limits new entries (e.g. to a point-in-time universe); curve, if given,
+    receives (bar_ts, equity) at every close."""
     balance = START_EQUITY
     positions: Dict[str, dict] = {}
     pending: Dict[str, dict] = {}
@@ -216,10 +223,12 @@ def run_account(market: Dict[str, dict], feats: Dict[str, dict], timeline: List[
                     pos["stop"] = trail_stop("LONG", pos["extreme"], f["atr"][i], pos["stop"], p)
                 if exit_on_close(f, i, "LONG"):
                     pending[sym] = {"type": "exit"}
-            elif entry_signal(f, i, p):
+            elif entry_signal(f, i, p) and (can_enter is None or can_enter(sym, ts)):
                 pending[sym] = {"type": "entry", "atr": float(f["atr"][i])}
 
         equity = balance + sum(x["upnl"] for x in positions.values())
+        if curve is not None:
+            curve.append((ts, equity))
         peak = max(peak, equity)
         max_dd = min(max_dd, equity / peak - 1)
         # The target counts only if closing everything right now still leaves >= $10k
@@ -231,6 +240,46 @@ def run_account(market: Dict[str, dict], feats: Dict[str, dict], timeline: List[
 
     final = balance + sum(x["upnl"] for x in positions.values())
     return {"final": max(final, 0.0), "hit_ts": hit_ts, "ruin_ts": ruin_ts, "max_dd": max_dd, "trades": n_trades}
+
+
+def symbol_trades(m: dict, f: Dict[str, np.ndarray], p: TrendParams, start_ms: int,
+                  can_enter: Optional[Callable[[int], bool]] = None) -> List[dict]:
+    """One symbol's long trades under backtest_trend.simulate's rules; R = net P&L / initial risk.
+
+    Matches run_account whenever the leverage caps don't bind (true at 1% risk). can_enter(bar_ts)
+    limits new entries."""
+    bars, trades, pos, pending = m["bars"], [], None, None
+    for i, bar in enumerate(bars):
+        if bar["timestamp"] < start_ms:
+            continue
+        if pending == "exit" and pos:
+            fill = bar["open"] * (1 - p.slippage)
+            pos["pnl"] += fill - pos["entry"] - fill * p.taker_fee
+            trades.append({**pos, "r": pos["pnl"] / pos["risk"], "exit_ts": bar["timestamp"]})
+            pos = None
+        elif pending and pending != "exit" and pos is None:
+            fill = bar["open"] * (1 + p.slippage)
+            stop = fill - p.stop_atr * pending["atr"]
+            pos = {"signal_i": pending["i"], "ts": bars[pending["i"]]["timestamp"], "entry": fill, "stop": stop,
+                   "risk": fill - stop, "extreme": fill, "pnl": -fill * p.taker_fee}
+        pending = None
+        if pos:
+            if bar["low"] <= pos["stop"]:
+                fill = min(bar["open"], pos["stop"]) * (1 - p.slippage)
+                pos["pnl"] += fill - pos["entry"] - fill * p.taker_fee
+                trades.append({**pos, "r": pos["pnl"] / pos["risk"], "exit_ts": bar["timestamp"]})
+                pos = None
+            else:
+                pos["pnl"] -= m["funding"][i] * bar["close"]
+        if pos:
+            pos["extreme"] = max(pos["extreme"], f["close"][i])
+            if not np.isnan(f["atr"][i]):
+                pos["stop"] = trail_stop("LONG", pos["extreme"], f["atr"][i], pos["stop"], p)
+            if exit_on_close(f, i, "LONG"):
+                pending = "exit"
+        elif entry_signal(f, i, p) and (can_enter is None or can_enter(bar["timestamp"])):
+            pending = {"i": i, "atr": float(f["atr"][i])}
+    return trades
 
 
 def _date(ts: int) -> str:
