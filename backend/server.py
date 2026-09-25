@@ -703,6 +703,47 @@ def resume_plan():
 def get_plan_status():
     return paper_trader.get_plan_status()
 
+@app.get("/api/plan/journal")
+def get_plan_journal(all_plans: bool = Query(False)):
+    """Hourly equity and events from data/journal/*.csv (current plan only unless all_plans)."""
+    from backend.plan_reporter import plan_reporter
+    since = 0 if all_plans else paper_trader.plan.get("started_at", 0)
+    return plan_reporter.journal(since_ts=since)
+
+class TelegramConnectRequest(BaseModel):
+    token: str
+
+class TelegramSettingsRequest(BaseModel):
+    enabled: Optional[bool] = None
+    weekly: Optional[bool] = None
+    daily: Optional[bool] = None
+
+@app.get("/api/telegram/status")
+def telegram_status():
+    from backend.notifier import notifier
+    return notifier.status()
+
+@app.post("/api/telegram/connect")
+def telegram_connect(req: TelegramConnectRequest):
+    """Checks the token, then waits up to 90 s for the user to message the bot."""
+    from backend.notifier import notifier
+    return notifier.connect(req.token)
+
+@app.post("/api/telegram/settings")
+def telegram_settings(req: TelegramSettingsRequest):
+    from backend.notifier import notifier
+    return notifier.settings(req.enabled, req.weekly, req.daily)
+
+@app.post("/api/telegram/test")
+def telegram_test():
+    from backend.notifier import notifier
+    if not notifier.ready:
+        return {"status": "error", "message": "Telegram is not connected (or notifications are off)."}
+    s = paper_trader.get_plan_status()
+    notifier.send(f"🔔 Test message. Equity {s['equity']:,.2f}, deposited {s['deposited']:,.2f}, "
+                  f"{'running' if s['is_running'] else 'paused'}.")
+    return {"status": "sent"}
+
 class SetCashRequest(BaseModel):
     cash: float = 10000.0
 

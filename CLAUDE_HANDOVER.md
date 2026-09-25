@@ -185,6 +185,25 @@ stricter bootstrap): 10k within 36 months 62% (was 70%), below deposits at 24 mo
 level 2: crypto ~1.5% fees + ~1.8% funding; TradFi <0.5% fees + ~8% funding at 2026 rates with September 2026 weights. Tested with mocked prices (entries, rebalance, trend flips, deposits, reload) and a live server smoke test;
 Binance is geo-blocked from the research server, so live quotes were not exercised there.
 
+**Telegram notifications and the local journal.**
+- `backend/notifier.py` holds the bot token and chat id. They are stored only in `data/telegram_config.json` (never
+  committed); `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` env vars override the file.
+  - `POST /api/telegram/connect {token}` checks the token and waits up to 90 s for the user to message the bot, which
+    gives the chat id.
+  - Messages go through a background queue, so Telegram never holds up trading.
+- `backend/plan_reporter.py` is called from the paper trader on every trade, funding charge, deposit, rebalance and loop
+  error, and once per loop (`tick`). It writes:
+  - `data/journal/equity.csv`: one row per hour (equity, deposited, trading P&L, exposures, drawdown, fees, funding).
+  - `data/journal/events.csv`: every trade, rebalance, deposit, funding charge, alert and plan start/pause/resume.
+- Messages sent: plan start/pause/resume, crypto entries and exits, the monthly TradFi rebalance, deposits, one alert
+  per newly crossed drawdown level (10/20/30/40%, compared with the backtest's worst drawdown for the risk level), the
+  target reached, TradFi data down for over an hour, loop errors (max one per hour), and a weekly summary (Sunday
+  18:00 UTC, optional daily). The deposit raises the drawdown peak so it doesn't hide a loss.
+- `GET /api/plan/journal` feeds the plan page's equity-vs-deposits chart and events table; `/api/telegram/status`,
+  `/settings` and `/test` serve the page's Telegram card.
+- Fixed at the same time: the plan used the default 720 h run length and would have stopped itself after 30 days; it
+  now runs with a 10-year limit.
+
 **Internet/Reddit survey (2026-09).** LLMs trading on their own lost money in the Alpha Arena live contest (4 of 6
 models down; Claude −42%, Gemini −46%); Reddit "ChatGPT trader" stories are weeks-long and unverified; bots
 advertising ~1%/day are not credible. AI reading news for small stocks (Lopez-Lira & Tang) is documented but

@@ -13,6 +13,7 @@ import requests
 import numpy as np
 from backend.dual_model_engine import dual_model_engine
 from backend.news_guard import news_guard
+from backend.plan_reporter import plan_reporter
 
 logger = logging.getLogger("layaquant.papertrader")
 
@@ -339,6 +340,10 @@ class PaperTrader:
                 ])
         except Exception as e:
             logger.error(f"Error writing trade CSV: {e}")
+        try:
+            plan_reporter.on_trade(self, trade)
+        except Exception as e:
+            logger.warning(f"Plan journal/notification error: {e}")
 
     def start(self, symbol="BTCUSDT", interval="5m", initial_capital=10000.0, confidence_gate=0.72, target_duration_hours=720.0):
         with self.lock:
@@ -559,6 +564,8 @@ class PaperTrader:
         while amount > 0 and time.time() - self.last_deposit_ts >= self.DEPOSIT_INTERVAL_S:
             self.last_deposit_ts += self.DEPOSIT_INTERVAL_S
             self.deposit_cash(amount)
+            if self.plan.get("active"):
+                plan_reporter.on_deposit(self, amount)
             logger.info(f"[DEPOSIT] recurring deposit of {amount:.2f} credited; total deposited {self.initial_capital:.2f}")
 
     def set_cash(self, cash: float):
@@ -1501,18 +1508,27 @@ class PaperTrader:
                 "tradfi_error": None, "tradfi_retry_at": 0,
             }
         self.set_recurring_deposit(float(monthly_deposit), float(target))
-        res = self.start(symbol="BTCUSDT", interval="15m", initial_capital=float(budget))
+        # The generic loop stops after target_duration_hours (default 720h); a plan runs until paused.
+        res = self.start(symbol="BTCUSDT", interval="15m", initial_capital=float(budget), target_duration_hours=10 * 365 * 24)
+        plan_reporter.on_plan(self, "start")
         return {"status": "started", "plan": self.plan, "loop": res.get("status")}
 
     def pause_plan(self) -> dict:
-        return self.stop() if self.is_running else {"status": "not_running"}
+        if not self.is_running:
+            return {"status": "not_running"}
+        res = self.stop()
+        if self.plan.get("active"):
+            plan_reporter.on_plan(self, "pause")
+        return res
 
     def resume_plan(self) -> dict:
         if not self.plan.get("active"):
             return {"status": "error", "message": "No plan to resume; start one first."}
         if self.is_running:
             return {"status": "already_running"}
-        return self.start(symbol="BTCUSDT", interval="15m", initial_capital=0.0)   # 0 keeps the current cash
+        res = self.start(symbol="BTCUSDT", interval="15m", initial_capital=0.0, target_duration_hours=10 * 365 * 24)   # 0 keeps the cash
+        plan_reporter.on_plan(self, "resume")
+        return res
 
     def _funding_interval_ms(self, sym: str) -> int:
         """Funding settlement interval: 8h by default; Binance's /fundingInfo lists symbols settling every 1h or 4h
@@ -1630,6 +1646,7 @@ class PaperTrader:
                 fund = crossed * q["funding_rate"] * pos["units"] * q["mark"]
                 self.cash -= fund
                 pos["funding_paid"] = pos.get("funding_paid", 0.0) + fund
+                plan_reporter.on_funding(self, fund)
             pos["funding_checked_ms"] = now_ms
 
         plan = self.plan
@@ -1647,11 +1664,16 @@ class PaperTrader:
             plan["tradfi_error"] = ("ETF history (Yahoo Finance) unavailable" if not weights else
                                     "no Binance price for " + ", ".join(s for s, q in quotes.items() if q is None))
             plan["tradfi_retry_at"] = now + 900
+            plan.setdefault("tradfi_pending_since", now)
+            if now - plan["tradfi_pending_since"] > 3600:
+                plan_reporter.on_warning(self, "tradfi", f"TradFi rebalance waiting: {plan['tradfi_error']} (retrying every 15 min)")
             self.save_state()
             return
         equity = self._trend_equity()
         for sym, w in weights.items():
             self._tradfi_rebalance(sym, equity * w, quotes[sym]["mark"], sig[tb.ASSETS[sym]])
+        plan.pop("tradfi_pending_since", None)
+        plan_reporter.on_rebalance(self, weights, sig)
         plan.update(tradfi_month=month, tradfi_weights=weights, tradfi_signals=sig, tradfi_rebalanced_at=now,
                     tradfi_error=None, tradfi_retry_at=0)
         self.save_state()
@@ -1734,6 +1756,7 @@ class PaperTrader:
                     fund = crossed * rate * pos["units"] * live_px * (1.0 if long else -1.0)
                     self.cash -= fund
                     pos["funding_paid"] = pos.get("funding_paid", 0.0) + fund
+                    plan_reporter.on_funding(self, fund)
                 pos["funding_checked_ms"] = now_ms
                 # Resting stop-market order
                 if (long and live_px <= pos["stop_loss_price"]) or (not long and live_px >= pos["stop_loss_price"]):
@@ -2329,8 +2352,13 @@ class PaperTrader:
 
                 self._apply_recurring_deposit()
                 self.evaluate_step()
+                plan_reporter.tick(self)
             except Exception as e:
                 logger.error(f"Error in institutional loop: {e}", exc_info=True)
+                try:
+                    plan_reporter.on_error(self, e)
+                except Exception:
+                    pass
 
             self.stop_event.wait(timeout=self.poll_seconds)
 
