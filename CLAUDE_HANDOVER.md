@@ -1,0 +1,278 @@
+# 🚀 LayaQuant Studio — Master Project Handover & Architecture Blueprint
+
+> **Document Version**: 2.5 (Production Hardened)  
+> **Last Updated**: September 25, 2026  
+> **Prepared For**: Claude Opus / Autonomous Senior Quant Engineer  
+> **Repository Path**: `c:/Users/mansour/Documents/antigravity/gallant-bell`
+
+---
+
+## 0. READ FIRST — Strategy Status (2026-09-25)
+
+**The 5m dual-model scalper described in §4 has no edge.** `backend/backtest_live_strategy.py` replays its exact
+signal code on 90 days of Binance USD-M 5m data (8 symbols): gross expectancy +0.008R/trade (PF 1.03, i.e. noise);
+after fees/slippage −0.09R/trade. No exit/filter variant tested was profitable. Its paper P&L looked good only
+because of simulator bugs (fixed — see §5.5).
+
+**The live paper trader now defaults to `strategy_mode = "TREND"`** (`backend/trend_strategy.py`):
+4h Donchian 120-bar breakout, long-only, 60-bar channel exit, 4×ATR(20) chandelier stop, 1% equity risk/trade,
+≤1× equity notional per position, ≤3× gross. Taker fills + slippage, funding charged at each 8h settlement.
+The old scalper is still available: `POST /api/paper/set_strategy_mode {"mode": "SCALPER"}`.
+
+Validation (`python -m backend.backtest_trend`, real klines + real funding history, 2020-01 → 2026-09):
+
+| | In-sample 2020-24 | Out-of-sample 2024-07 → 2026-09 |
+|---|---|---|
+| Selected config (chosen on IS Sharpe only) | CAGR 49%, Sharpe 1.65, maxDD −19% | **CAGR 30%, Sharpe 1.17, maxDD −26%** |
+| BTC buy & hold | CAGR 60%, Sharpe 1.07, maxDD −77% | CAGR 14%, Sharpe 0.52, maxDD −53% |
+| Same exits, random long entries (5 seeds) | — | Sharpe 0.2–0.9 (avg ≈0.66) |
+
+- All 42 grid configs (1d/4h, N, stop, long/long+short) had positive OOS Sharpe (0.34–1.29) → edge is not a single lucky setting.
+- The random-entry control shows a large part of the return is long crypto drift + cut-losers/let-winners-run exits; the breakout entry roughly doubles it.
+- Expect long flat/down stretches (2022: −2.5%; 2025 −9% for the daily variant). Win rate is ~35–45%; profits come from a few large trends.
+- 2.2 years OOS is still a small sample. Paper-trade it before risking money; do not raise risk above 1% on this evidence.
+
+---
+
+## 1. Executive Summary & Purpose
+
+**LayaQuant Studio** is an autonomous, 100% open-source, zero-paid-API quantitative trading desk and real-time paper trading engine engineered for crypto perpetual futures. 
+
+### Core Mission
+Scale an initial bankroll of **€500.00 to €10,000.00** (+1,900% / 20x gain) without crossing the Kelly overbetting cliff, utilizing:
+- **Dual-Model Consensus AI**: System 2 Macro Governor (Model A) + System 1 Microstructure Sniper (Model B) with institutional Veto Armor.
+- **Dynamic Milestone Tiered Kelly Compounding**: Geometric position scaling modulated across 4 capitalization milestones with automatic defensive throttles.
+- **Strict Asymmetric Risk Architecture**: 1.35x ATR Initial Stop Loss, 1.40x ATR Take-Profit 1 (75% scalp lock), and a 2.70x ATR trailing runner.
+- **Zero-Paid-API Constraint**: Public Binance REST/WebSocket endpoints and open-source models/scrapers.
+
+---
+
+## 2. Directory Structure & File Inventory
+
+```
+c:/Users/mansour/Documents/antigravity/gallant-bell/
+├── backend/
+│   ├── server.py                        # FastAPI microservice (API routes, startup recovery, UI serving)
+│   ├── paper_trader.py                  # Core trading engine (state machine, order lifecycle, blotter, scanner)
+│   ├── dual_model_engine.py             # Model A (Macro Governor) + Model B (Micro Sniper) + Consensus Synthesizer
+│   ├── neural_dream.py                  # 18-D PyTorch Neural Policy Net & offline dream learning loop
+│   ├── news_engine.py                   # Zero-cost live RSS & Twitter sentiment scraper with NLP catalyst scoring
+│   ├── research_engine.py               # Microstructure math: Lopez de Prado VPIN, Kyle lambda, behavioral metrics
+│   ├── institutional_compounding_engine.py # Multi-asset compounding futures backtester & squeeze detector
+│   ├── walk_forward_5m_futures.py       # Out-of-sample walk-forward validation framework
+│   └── requirements.txt                 # Python dependencies
+├── frontend/
+│   └── index.html                       # Real-time Bloomberg/TradingView terminal UI (vanilla JS, Tailwind, Chart.js)
+├── data/
+│   ├── paper_trading_state.json         # Real-time persisted state (equity, positions, radar, indicators)
+│   ├── paper_trades.csv                 # Detailed trade blotter log (fills, gross, fees, net PnL, RRR, reasons)
+│   ├── live_sessions_history.json       # Historical session archive for post-trade equity curve telemetry
+│   └── neural_market_model.pt           # PyTorch weights for the 18-D neural policy model
+├── run.bat                              # Windows one-click launcher
+├── run.sh                               # Unix launcher
+└── CLAUDE_HANDOVER.md                   # This master developer document
+```
+
+---
+
+## 3. High-Level Architecture & Data Flow
+
+```mermaid
+flowchart TD
+    subgraph Data Feeds [Zero-Paid Public Feeds]
+        B1["Binance Public REST Klines (5m, 1h, 4h)"]
+        B2["Binance Public L2 Depth (Bid/Ask Ratio & Spread)"]
+        B3["Binance Public WebSocket (@ticker stream)"]
+        N1["RSS News & Whale Feeds (CoinDesk, Decrypt, Yahoo)"]
+    end
+
+    subgraph Intelligence Layer [backend/dual_model_engine.py]
+        MA["Model A: Macro Governor (HTF Trend, News Catalyst, F&G)"]
+        MB["Model B: Micro Sniper (OFI Depth, VPIN Toxicity, Squeeze)"]
+        DCS["Dual Consensus Synthesizer (Veto Protocol & Score 0-100)"]
+        MA --> DCS
+        MB --> DCS
+    end
+
+    subgraph Execution & Risk [backend/paper_trader.py]
+        SC["Market Universe Scanner (BTC, ETH, SOL, DOGE, XRP, BNB, AVAX, SUI)"]
+        KC["Dynamic Tiered Kelly Sizer (Risk 2.5% - 8.0%, Buffer >20%)"]
+        RM["Asymmetric Risk Manager (SL: 1.35x ATR | TP1: 1.4x 75% | Trail)"]
+        POS["Multi-Slot Portfolio (Up to 3 Concurrent Trades, 5x Iso)"]
+    end
+
+    subgraph Persistence & Frontend
+        STATE["data/paper_trading_state.json & paper_trades.csv"]
+        UI["frontend/index.html (Real-Time Dashboard & Blotter)"]
+    end
+
+    B1 & B2 --> MB
+    B1 & N1 --> MA
+    DCS --> SC
+    SC --> KC --> RM --> POS
+    POS --> STATE
+    B3 --> UI
+    STATE --> UI
+```
+
+---
+
+## 4. Detailed Component Breakdown
+
+### A. The Dual-Model AI Engine (`backend/dual_model_engine.py`)
+
+#### 1. Model A — Macro Governor (`LayaMacroGovernor`)
+- **Higher Timeframe Regime Detection**: Classifies market into `TREND_BULL`, `TREND_BEAR`, `RANGE_BOUND`, or `TOXIC_CHOP` using 4-hour / 1-hour 50/200 EMA alignment and ATR expansion.
+- **Directional Permit**: Emits `PERMIT_LONG`, `PERMIT_SHORT`, `PERMIT_BOTH`, or `ENFORCE_CASH`.
+- **Governor Hard Veto**: Automatically blocks all trades if:
+  - Macro regime is `TOXIC_CHOP` (high ATR expansion + flat moving average spread).
+  - High-impact FUD catalyst is detected against the asset (e.g., hacks, regulatory actions).
+  - Andrew Lo Adaptive Market Hypothesis (AMH) extreme sentiment throttle: caps leverage when Fear & Greed is extreme.
+
+#### 2. Model B — Micro Sniper (`LayaMicroSniper`)
+- **Microstructure Order Flow (OFI)**: Evaluates bid/ask order book depth ratio from public Binance order books:
+  - If buying: requires Bid/Ask ratio >= 0.85 (OFI veto triggered if ask wall heavily outweighs bids).
+  - If shorting: requires Bid/Ask ratio <= 1.15 (veto if heavy bid wall resting support).
+- **VPIN Flow Toxicity (Lopez de Prado)**: Calculates Volume-Synchronized Probability of Toxicity. If VPIN >= 0.70, triggers toxicity veto to prevent adverse selection.
+- **Bollinger-Keltner Volatility Squeeze**: Detects volatility compression when 20-period Bollinger Bands contract entirely inside 1.5x ATR Keltner Channels.
+
+#### 3. Consensus Synthesizer (`DualConsensusSynthesizer`)
+Combines Model A and Model B into a composite score:
+`Score = 50.0 + (MacroConfidence * 25.0) + (TacticalConfidence * 25.0)`
+- **Score >= 88.0/100 + Dual Consensus** is strictly required to open a trade.
+
+---
+
+### B. Core Portfolio & Execution Engine (`backend/paper_trader.py`)
+
+#### 1. Multi-Asset Radar Universe
+Scans 8 high-liquidity perpetual pairs on every cycle:
+`["BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT", "XRPUSDT", "BNBUSDT", "AVAXUSDT", "SUIUSDT"]`
+Holds up to **3 concurrent positions** across decorrelated pairs.
+
+#### 2. Dynamic Milestone Tiered Kelly Sizing
+Positions are sized via a fraction of the Kelly Criterion based on win rate p ~= 0.65 and payoff ratio b >= 1.5:
+`Kelly* = (p * (b + 1) - 1) / b`
+Modulated across 4 Capital Milestones:
+- **Phase 1 (€500 – €1,500)**: Scrappy Growth (Risk = 4.0% - 8.5% of equity).
+- **Phase 2 (€1,500 – €3,500)**: Capital Expansion (Risk = 3.0% - 6.5%).
+- **Phase 3 (€3,500 – €5,000)**: Milestone Capital Lock (Risk = 2.0% - 4.5%).
+- **Phase 4 (€5,000 – €10,000)**: Strict Quarter-Kelly (Risk = 2.0% - 2.5%).
+- **Defensive Throttle**: After >= 1 loss, risk is automatically cut by 40% until a win is banked.
+- **Liquidity Buffer**: Always preserves a minimum **20% liquid unencumbered cash buffer** to eliminate liquidation risk.
+
+#### 3. Calibrated Risk/Reward Rules
+- **Stop Loss**: Strict 1.35x ATR_14 from entry.
+- **Take-Profit 1 (Scalp Lock)**: Closes **75% of position** at +1.40x ATR_14 (~1:1 R:R).
+- **Runner**: Remaining 25% runner has its stop ratcheted to `entry + 0.2x ATR` (guaranteed risk-free gain) and targets 2.70x ATR_14.
+- **Stale Timeout**: 60-minute holding limit if a trade fails to hit TP1.
+- **Anti-Churn Cooldown**: 10-minute (600s) mandatory desk pause after closing trades.
+- **Maker Post-Only Execution**: Uses limit orders at 0.02% fee rate (saving 73% vs. 0.075% taker).
+- **Strict Leverage Cap**: Hard-capped at **5.0x Isolated Margin** across all symbols.
+
+---
+
+## 5. Critical Debugging History & Lessons Learned
+
+> **DO NOT RE-INTRODUCE THESE BUGS.** Claude Opus must be aware of the exact failure modes discovered and resolved:
+
+### 1. The Cross-Symbol Price Contamination Bug (Fixed)
+- **Symptom**: Historical log showed account exploding from €500 to $147,195.34 in fake profits.
+- **Cause**: In `fetch_klines()`, a fallback line `p = self.current_price` was used during Binance API timeouts. When XRP timed out, it was assigned BNB's $792 price, creating a fake +$95k gain.
+- **Fix**: Isolated symbol caches completely. Added the **Absolute Anomaly Guard**: any price tick deviating >25% from entry price is instantly dropped as a corrupted tick.
+
+### 2. The Inverted Risk/Reward Bleed (-€56 with 68% Win Rate) (Fixed)
+- **Symptom**: User ran live trading and lost €56 despite winning 51 out of 75 trades (68% win rate).
+- **Cause**: Stop loss was 2.2x ATR (loss = -$5.30 on 100% position size) while TP1 closed only 50% at 1.2x ATR (win = +$1.38). Win/loss ratio was 0.26 (3.8x larger losses).
+- **Fix**: Tightened SL to 1.35x ATR (cuts loss by 44%), increased TP1 to 75% at 1.4x ATR (lifts avg win to +$2.65). Expectancy flipped from -$0.76 to **+$0.86/trade**.
+
+### 3. The 15-Minute Chokehold & Overnight Chop Bleed (Fixed)
+- **Symptom**: Overnight session lost €94 across 165 trades, paying $40.60 in fees.
+- **Cause**:
+  1. A rigid 15-minute / 25-minute `adverse_atr >= 0.8` scratch dumped 42 trades at market inside normal sideways range noise.
+  2. In `backend/paper_trader.py` (line 1438), `intelligent_dream_trainer` was silently overwriting `self.atr_multiplier_stop` back to 2.1x ATR every 10 seconds!
+  3. In `RANGE_BOUND` regimes, `score >= 40.0` was permitted as a fallback, machine-gunning 76 entries into a flat 0% market.
+- **Fix**:
+  - Hard-locked `self.atr_multiplier_stop = 1.35` (banned neural overwrite).
+  - Removed premature 25m -0.8x ATR scratches (giving trades 60m to develop).
+  - Required `score >= 88.0` AND Volatility Squeeze for `RANGE_BOUND` entries.
+  - Increased inter-trade cooldown to 10 minutes (600s).
+  - Enforced post-only maker fills (0.02%).
+
+### 4. The Trade Blotter 'Entry = Exit' UI Bug (Fixed)
+- **Symptom**: All trade rows in the web UI displayed identical numbers for Entry and Exit.
+- **Cause**: Frontend mapped `entryPrice: t.price || 0, exitPrice: t.price || 0`.
+- **Fix**: Backend now emits distinct `entry_price` and `exit_price` on all trade objects; frontend displays `--` on open entries and exact execution prices on exits.
+
+### 5. Paper-Simulator Optimism Bugs (Fixed 2026-09-25)
+- Entry used the radar's display-rounded price (2dp): up to ±0.5% error on ~$1 coins (SUI/XRP) ≈ 1 ATR of fake P&L. Now uses `price_raw`/`atr_raw`.
+- Entry fee was charged on margin, not notional (5× too small at 5× leverage).
+- Stops/timeouts/forced/manual exits were billed as maker with zero slippage. Now taker (0.05%) + 2bps, filled at the stop or worse.
+- Exits were triggered by the 5m bar's high/low, which includes prices from BEFORE entry and from earlier polls. Now only prices observed since the previous evaluation count.
+- TP was checked before SL in the same window; now the stop wins. Trailing ratchet no longer raises the stop from a high and then "hits" it with an earlier low of the same window.
+- Kelly sizing had hard floors (4–8.5%) that bet big even with negative Kelly; entry rows (`SELL_SHORT`) counted as losses. Now realized-leg stats, phase values are caps, 0.5% probe size without an edge.
+- `evaluate_step` was not locked: the background loop and `/api/paper/step` could close the same position twice (double cash credit). Now serialized with `self.lock`.
+
+---
+
+## 6. How to Run, Test, and Verify
+
+### Prerequisites
+- Python 3.10+ (Current runtime: Python 3.11 with PyTorch + CUDA support).
+- Windows OS (PowerShell / Command Prompt).
+
+### Launching the System
+```powershell
+# From repository root:
+python -m uvicorn backend.server:app --host 127.0.0.1 --port 8000
+```
+- Web Dashboard: `http://127.0.0.1:8000`
+- API Health Check: `GET http://127.0.0.1:8000/health`
+- Paper Trader Status: `GET http://127.0.0.1:8000/api/paper/status`
+
+### Starting / Stopping Paper Trading
+- **Via Dashboard**: Click `▶ RECORD LIVE` / `⏹ PAUSE`.
+- **Via API**:
+  ```powershell
+  # Start live loop:
+  Invoke-RestMethod -Method POST -Uri "http://127.0.0.1:8000/api/paper/start"
+  
+  # Stop live loop:
+  Invoke-RestMethod -Method POST -Uri "http://127.0.0.1:8000/api/paper/stop"
+  ```
+
+### Quick Diagnostic Verification Command
+```powershell
+python -c "import urllib.request, json; res = json.loads(urllib.request.urlopen('http://127.0.0.1:8000/api/paper/status').read()); print('Status:', res.get('is_running'), 'Equity:', res.get('total_equity'), 'Cash:', res.get('cash'), 'SL mult:', res.get('sl_atr_mult'), 'TP1 mult:', res.get('tp1_atr_mult'), 'Positions:', len(res.get('positions', [])))"
+```
+
+---
+
+## 7. Current System State (As of Handover)
+
+| Parameter | Current Value | Rationale |
+| :--- | :--- | :--- |
+| **Cash & Total Equity** | **€500.00** | Pristine clean baseline ready for fresh live run |
+| **Open Positions** | **0** | Clean slate |
+| **Stop Loss ATR Multiplier** | **1.35x** | Hard-locked (cuts losing size by 44%) |
+| **Take Profit 1 Multiplier** | **1.40x** | Locks **75%** of position |
+| **Runner Multiplier** | **2.70x** | 25% rides risk-free with stop at entry + 0.2x ATR |
+| **Max Concurrent Positions**| **3** | Decorrelated multi-asset diversification |
+| **Max Leverage** | **5.0x** | Hard ceiling on all assets |
+| **Trade Cooldown** | **600 seconds (10 min)** | Anti-churn discipline |
+| **Max Holding Timeout** | **3,600 seconds (60 min)**| Gives 5m breakout space without premature choking |
+| **Fee Rate** | **0.02% (Maker)** | Post-only limit execution |
+| **Scanner Universe** | **8 Top Altcoins** | BTC, ETH, SOL, DOGE, XRP, BNB, AVAX, SUI |
+
+---
+
+## 8. Immediate Next Steps & Strategic Roadmap for Claude Opus
+
+1. **Live Autonomous Run**:
+   - Trigger `POST /api/paper/start` or have the user click `▶ RECORD LIVE` to accumulate fresh, clean trade history under the hardened 1.35x ATR rules.
+2. **Monitor Fee Structure**:
+   - Inspect `data/paper_trades.csv` periodically to verify that Maker fee savings are active (`fee_rate = 0.0002`).
+3. **Adaptive Range Governor Enhancement**:
+   - If sideways crypto market conditions persist, consider implementing an **ADX (Average Directional Index)** or **Choppiness Index** filter to completely sleep the bot when ADX < 20.
+4. **Milestone Progress Tracking**:
+   - As equity approaches **€1,500** (Milestone 1), monitor the automatic transition from Phase 1 Scrappy Growth to Phase 2 Growth Expansion in `backend/paper_trader.py`.
