@@ -10,7 +10,8 @@ Rules (all evaluated at a bar's close, orders execute at the next bar's open):
 - Exit long:   close < lowest low of the previous `exit_n` bars, or a resting stop at
                (highest close since entry - stop_atr * ATR) is touched intrabar
 - Exit short:  mirror image
-- Size:        risk `risk_pct` of equity between entry and the initial stop (stop_atr * ATR)
+- Size:        risk `risk_pct` of equity between entry and the initial stop (stop_atr * ATR);
+               shorts use `short_risk_pct` instead when it is set, so each side can have its own lever
 """
 
 from dataclasses import dataclass
@@ -28,7 +29,9 @@ class TrendParams:
     stop_atr: float = 3.0
     trend_n: int = 0            # 0 disables the SMA trend filter
     allow_short: bool = True
+    allow_long: bool = True
     risk_pct: float = 0.01      # equity risked per trade at the initial stop
+    short_risk_pct: Optional[float] = None   # risk for shorts; None = same as risk_pct
     max_gross_leverage: float = 3.0
     max_position_leverage: float = 1.0   # cap on one position's notional / equity
     taker_fee: float = 0.0005
@@ -80,7 +83,7 @@ def entry_signal(f: Dict[str, np.ndarray], i: int, p: TrendParams) -> Optional[s
         if np.isnan(f["sma"][i]):
             return None
         trend_ok_long, trend_ok_short = close > f["sma"][i], close < f["sma"][i]
-    if close > f["upper"][i] and trend_ok_long:
+    if p.allow_long and close > f["upper"][i] and trend_ok_long:
         return "LONG"
     if p.allow_short and close < f["lower"][i] and trend_ok_short:
         return "SHORT"
@@ -101,12 +104,14 @@ def trail_stop(side: str, extreme_close: float, atr: float, current_stop: float,
     return min(current_stop, extreme_close + p.stop_atr * atr)
 
 
-def position_size(equity: float, entry: float, atr: float, gross_used: float, p: TrendParams) -> float:
+def position_size(equity: float, entry: float, atr: float, gross_used: float, p: TrendParams,
+                  side: str = "LONG") -> float:
     """Notional in USD, risk-based and capped by per-position and portfolio leverage."""
     stop_dist_pct = p.stop_atr * atr / entry
     if stop_dist_pct <= 0:
         return 0.0
-    notional = equity * p.risk_pct / stop_dist_pct
+    risk = p.short_risk_pct if side == "SHORT" and p.short_risk_pct is not None else p.risk_pct
+    notional = equity * risk / stop_dist_pct
     notional = min(notional, equity * p.max_position_leverage)
     notional = min(notional, max(0.0, equity * p.max_gross_leverage - gross_used))
     return notional

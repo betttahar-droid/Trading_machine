@@ -1493,7 +1493,7 @@ class PaperTrader:
                 long = sig == "LONG"
                 exec_px = live_px * (1.0 + self.slippage_bps / 10000.0 if long else 1.0 - self.slippage_bps / 10000.0)
                 gross_used = sum(x["units"] * float(x.get("current_price", x["entry_price"])) for x in self.positions.values())
-                notional = position_size(self._trend_equity(), exec_px, atr, gross_used, p)
+                notional = position_size(self._trend_equity(), exec_px, atr, gross_used, p, sig)
                 margin = notional / p.max_gross_leverage
                 fee = notional * self.taker_fee_rate
                 if notional >= 10.0 and self.cash >= margin + fee:

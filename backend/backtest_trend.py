@@ -116,7 +116,9 @@ def load_market(interval: str, end_ms: int) -> Dict[str, dict]:
     return market
 
 
-def simulate(market: Dict[str, dict], p: TrendParams, start_ms: int, end_ms: int, initial: float = 500.0) -> dict:
+def simulate(market: Dict[str, dict], p: TrendParams, start_ms: int, end_ms: int, initial: float = 500.0,
+             curve_out: list = None) -> dict:
+    """curve_out, if given, receives (bar_ts, equity) at every close."""
     feats = {s: compute_features(m["bars"], p) for s, m in market.items()}
     timeline = sorted({b["timestamp"] for m in market.values() for b in m["bars"] if start_ms <= b["timestamp"] < end_ms})
 
@@ -156,7 +158,7 @@ def simulate(market: Dict[str, dict], p: TrendParams, start_ms: int, end_ms: int
                 fill = bar["open"] * (1 + p.slippage if side == "LONG" else 1 - p.slippage)
                 gross_used = sum(abs(x["units"]) * x["mark"] for x in positions.values())
                 equity = balance + sum(x["upnl"] for x in positions.values())
-                notional = position_size(equity, fill, order["atr"], gross_used, p)
+                notional = position_size(equity, fill, order["atr"], gross_used, p, side)
                 if notional < 10.0:
                     continue
                 units = notional / fill
@@ -210,6 +212,8 @@ def simulate(market: Dict[str, dict], p: TrendParams, start_ms: int, end_ms: int
 
         curve.append((ts, balance + sum(x["upnl"] for x in positions.values())))
 
+    if curve_out is not None:
+        curve_out.extend(curve)
     return summarize(trades, curve, initial, fees_total, funding_total)
 
 
