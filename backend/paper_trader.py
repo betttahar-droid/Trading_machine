@@ -112,6 +112,10 @@ class PaperTrader:
         self.trend_params = TrendParams(interval="4h", entry_n=120, exit_n=60, stop_atr=4.0,
                                         allow_short=False, risk_pct=0.01)
         self.trend_last_bar: Dict[str, int] = {}
+        # Recurring deposit plan (e.g. 100 every 30 days towards a 10,000 target); 0 = off
+        self.monthly_deposit = 0.0
+        self.last_deposit_ts = 0.0
+        self.equity_target = 10000.0
         self.load_state()
 
         # Resilient auto-recovery: If active positions exist or is_running was True, auto-resume background worker thread
@@ -202,6 +206,9 @@ class PaperTrader:
                         self.radar_scan_results = data.get("radar_scan_results", [])
                         self.strategy_mode = data.get("strategy_mode", "TREND")
                         self.trend_last_bar = data.get("trend_last_bar", {})
+                        self.monthly_deposit = float(data.get("monthly_deposit", 0.0))
+                        self.last_deposit_ts = float(data.get("last_deposit_ts", 0.0))
+                        self.equity_target = float(data.get("equity_target", 10000.0))
                         self.dual_model_telemetry = data.get("dual_model_telemetry", {})
                         self.active_policy_source = data.get("active_policy_source", "DREAM_ADAPTED")
                         self.active_formula = data.get("active_formula", "If RSI < 36.0 or (RSI > 52.0 with Bullish Trend) and Confidence >= 78% --> BUY LONG (SL: 2.2x ATR, TP: 2.8x ATR)")
@@ -258,7 +265,10 @@ class PaperTrader:
                     "radar_scan_results": getattr(self, "radar_scan_results", []),
                     "dual_model_telemetry": getattr(self, "dual_model_telemetry", {}),
                     "strategy_mode": getattr(self, "strategy_mode", "TREND"),
-                    "trend_last_bar": getattr(self, "trend_last_bar", {})
+                    "trend_last_bar": getattr(self, "trend_last_bar", {}),
+                    "monthly_deposit": getattr(self, "monthly_deposit", 0.0),
+                    "last_deposit_ts": getattr(self, "last_deposit_ts", 0.0),
+                    "equity_target": getattr(self, "equity_target", 10000.0)
                 }
                 with open(STATE_FILE, "w", encoding="utf-8") as f:
                     json.dump(data, f, indent=2)
@@ -516,6 +526,31 @@ class PaperTrader:
             self.initial_capital += amount
             self.save_state()
             return {"status": "success", "deposited": amount, "new_cash": self.cash, "initial_capital": self.initial_capital}
+
+    DEPOSIT_INTERVAL_S = 30 * 86400
+
+    def set_recurring_deposit(self, amount: float, target: Optional[float] = None) -> dict:
+        """Add `amount` every 30 days (first one 30 days from now); 0 turns it off."""
+        with self.lock:
+            if amount < 0:
+                return {"status": "error", "message": "Deposit amount cannot be negative."}
+            self.monthly_deposit = float(amount)
+            self.last_deposit_ts = time.time()
+            if target:
+                self.equity_target = float(target)
+            self.save_state()
+            return {"status": "success", "monthly_deposit": self.monthly_deposit, "equity_target": self.equity_target,
+                    "next_deposit_at": self.last_deposit_ts + self.DEPOSIT_INTERVAL_S}
+
+    def _apply_recurring_deposit(self):
+        """Credit every scheduled deposit that has come due (catches up after downtime)."""
+        amount = getattr(self, "monthly_deposit", 0.0)
+        if amount > 0 and not self.last_deposit_ts:
+            self.last_deposit_ts = time.time()
+        while amount > 0 and time.time() - self.last_deposit_ts >= self.DEPOSIT_INTERVAL_S:
+            self.last_deposit_ts += self.DEPOSIT_INTERVAL_S
+            self.deposit_cash(amount)
+            logger.info(f"[DEPOSIT] recurring deposit of {amount:.2f} credited; total deposited {self.initial_capital:.2f}")
 
     def set_cash(self, cash: float):
         with self.lock:
@@ -2057,6 +2092,7 @@ class PaperTrader:
                     self.stop()
                     break
 
+                self._apply_recurring_deposit()
                 self.evaluate_step()
             except Exception as e:
                 logger.error(f"Error in institutional loop: {e}", exc_info=True)
@@ -2485,6 +2521,10 @@ class PaperTrader:
                 "session_start_capital": round(getattr(self, "session_start_capital", self.initial_capital), 2),
                 "cash": round(self.cash, 2),
                 "total_equity": round(total_equity, 2),
+                "monthly_deposit": getattr(self, "monthly_deposit", 0.0),
+                "next_deposit_at": (self.last_deposit_ts + self.DEPOSIT_INTERVAL_S) if getattr(self, "monthly_deposit", 0.0) > 0 else None,
+                "equity_target": getattr(self, "equity_target", 10000.0),
+                "target_progress_pct": round(total_equity / max(getattr(self, "equity_target", 10000.0), 1e-9) * 100.0, 1),
                 "net_pnl": round(net_pnl, 2),
                 "net_pnl_pct": round(net_pnl_pct, 2),
                 "session_trades_count": len(session_trades),

@@ -665,6 +665,14 @@ class DepositRequest(BaseModel):
 def deposit_paper_money(req: DepositRequest):
     return paper_trader.deposit_cash(req.amount)
 
+class RecurringDepositRequest(BaseModel):
+    amount: float = 100.0            # added every 30 days; 0 turns it off
+    target: Optional[float] = 10000.0
+
+@app.post("/api/paper/recurring_deposit")
+def set_recurring_deposit(req: RecurringDepositRequest):
+    return paper_trader.set_recurring_deposit(req.amount, req.target)
+
 class SetCashRequest(BaseModel):
     cash: float = 10000.0
 
