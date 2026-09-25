@@ -17,6 +17,12 @@ Trades are split into thirds by the measure (top vs bottom third, permutation te
 unlikely to be chance in both periods; one that flips sign would hurt as a filter.
 
     python -m backend.insight_lab
+    python -m backend.insight_lab --composite
+
+--composite is the portfolio-level test of a blend chosen before looking at 2024-07 on: the measures whose
+2020-03 .. 2024-06 split looked useful (random split as large < 30%), each z-scored against its own trailing
+year with the sign it had then, averaged per coin and day. The live 8-coin strategy skips entries when the
+blend is in the bottom third of its trailing year; compared with no filter and with random skips.
 """
 
 import io
@@ -135,7 +141,79 @@ def coinbase_premium(binance_close: pd.Series) -> pd.Series:
     return (cb / binance_close.reindex(cb.index) - 1).dropna()
 
 
+COMPOSITE = {"fg_chg7": +1, "stable_30d": +1, "dvol": -1, "cb_premium3": +1, "top_ls": -1, "acct_ls": -1, "taker_ls3": +1}
+
+
+def composite_test(last_month: str):
+    from backend.growth_study import LIVE, load_market_bulk, run_account
+    from backend.strategy_lab import stats
+    from backend.trend_strategy import compute_features
+    from backend.universe_data import available_months, load_bars
+    fg, stable, vol = fear_greed(), stablecoin_supply(), dvol()
+    btc_close = load_bars("BTCUSDT", "1d", last_month)["close"]
+    btc_close.index = btc_close.index.normalize()
+    prem = coinbase_premium(btc_close)
+    days = pd.date_range("2020-01-01", pd.Timestamp.now().normalize())
+    market_wide = pd.DataFrame({"fg_chg7": fg - fg.shift(7), "stable_30d": stable / stable.shift(30) - 1,
+                                "dvol": vol, "cb_premium3": prem.rolling(3).mean()}).reindex(days).ffill(limit=3)
+
+    def z(frame):         # vs. the trailing year, known the day before
+        mu = frame.rolling(365, min_periods=90).mean()
+        sd = frame.rolling(365, min_periods=90).std()
+        return ((frame - mu) / sd).shift(1)
+    blend, thresh = {}, {}
+    for sym in UNIVERSE:
+        m = binance_metrics(sym)
+        m.index = pd.to_datetime(m.index)
+        coin = pd.DataFrame({"top_ls": m["top_ls"], "acct_ls": m["acct_ls"],
+                             "taker_ls3": m["taker_ls"].rolling(3).mean()}).reindex(days)
+        zs = z(pd.concat([market_wide, coin], axis=1))
+        b = sum(zs[k] * sign for k, sign in COMPOSITE.items()) / zs[list(COMPOSITE)].notna().sum(axis=1).replace(0, np.nan)
+        blend[sym] = b
+        thresh[sym] = b.rolling(365, min_periods=90).quantile(1 / 3).shift(1)
+
+    calls = {"n": 0, "blocked": 0}
+
+    def can_enter(sym, ts):
+        day = pd.Timestamp(ts + 4 * 3_600_000, unit="ms").normalize()
+        b, t = blend[sym].get(day, np.nan), thresh[sym].get(day, np.nan)
+        calls["n"] += 1
+        if np.isnan(b) or np.isnan(t) or b >= t:
+            return True
+        calls["blocked"] += 1
+        return False
+
+    market = load_market_bulk("4h", last_month, UNIVERSE, lambda s: available_months(s, "4h"))
+    feats = {s: compute_features(m["bars"], LIVE) for s, m in market.items()}
+    timeline = sorted({b["timestamp"] for m in market.values() for b in m["bars"]})
+    t0 = int(pd.Timestamp("2021-01-01").value // 10**6)
+
+    def daily(fn):
+        curve: list = []
+        run_account(market, feats, timeline, LIVE, t0, timeline[-1] + 1, liquidation=False, can_enter=fn, curve=curve)
+        eq = pd.Series(dict(curve))
+        eq.index = pd.to_datetime(eq.index, unit="ms")
+        return eq.resample("1D").last().dropna().pct_change().dropna()
+
+    def line(name, r):
+        a, b = stats(r[:"2024-06-30"]), stats(r["2024-07-01":])
+        return (f"  {name:<26} 2021-24H1: CAGR {a['cagr']:+6.1%} Sharpe {a['sharpe']:+.2f} DD {a['maxdd']:+6.1%} | "
+                f"2024H2+: CAGR {b['cagr']:+6.1%} Sharpe {b['sharpe']:+.2f} DD {b['maxdd']:+6.1%}")
+    base = daily(None)
+    filt = daily(can_enter)
+    rate = calls["blocked"] / max(calls["n"], 1)
+    print(f"Blend filter blocks {rate:.0%} of breakout signals. Live trend strategy, 1% risk:")
+    print(line("unfiltered", base))
+    print(line("blend filter", filt))
+    import zlib
+    for seed in range(5):
+        print(line(f"random skips, seed {seed}",
+                   daily(lambda s, ts, seed=seed: zlib.crc32(f"{s}{ts}{seed}".encode()) % 10_000 / 10_000 >= rate)))
+
+
 def main():
+    if "--composite" in __import__("sys").argv:
+        return composite_test(time.strftime("%Y-%m", time.gmtime(time.time() - 32 * 86_400)))
     last_month = time.strftime("%Y-%m", time.gmtime(time.time() - 32 * 86_400))
     trades = live_trend_trades(last_month)
     print(f"{len(trades)} trend trades on the 8 coins", flush=True)
