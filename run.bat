@@ -14,6 +14,6 @@ if %errorlevel% neq 0 (
 
 echo Starting LayaQuant Decision Daemon on http://127.0.0.1:8000 ...
 echo Loading model engine and initializing API endpoints...
-start "" http://127.0.0.1:8000
+start "" http://127.0.0.1:8000/plan
 python -m uvicorn backend.server:app --host 127.0.0.1 --port 8000
 pause

@@ -163,6 +163,21 @@ ADGM-regulated Nest Exchange) the numbers are nearly the same (ETF book Sharpe 0
 bot and account could run both books. Not built into the paper trader yet; TradFi perp funding and regional
 availability still to check.
 
+**The plan tool (`frontend/plan.html`, http://127.0.0.1:8000/plan; paper money).** The user picks budget, risk
+level (1-3), monthly deposit and target; `POST /api/plan/start` resets the paper account and runs both books:
+- Crypto trend (unchanged rules, 8 coins) at risk per trade = 0.68% x level.
+- TradFi trend (`backend/tradfi_book.py`): XAUUSDT, XAGUSDT, SPYUSDT, QQQUSDT perps. Once a month, long an asset
+  while its ETF's (GLD/SLV/SPY/QQQ, Yahoo Finance) 12-month return is positive, sized to (14.6% x level)/sqrt(4)
+  yearly volatility each; caps 1.5x equity per asset, 3x total; positions within 20% of target are left alone.
+  Marked at the perps' Binance mark price, funding charged, taker fee + slippage on every change.
+- Level mapping makes both books carry equal risk as in `cross_asset_lab.py`. Crypto entries only count crypto
+  positions against their leverage cap; the scalper exit manager skips TRADFI positions.
+- Recurring deposit every 30 days; `/api/plan/pause`, `/api/plan/resume`, `/api/plan/status`. The plan and its
+  risk level persist in `data/paper_trading_state.json`.
+If Yahoo or the Binance TradFi quotes are unavailable, the rebalance waits and retries every 15 minutes (shown on the
+page). Tested with mocked prices (entries, rebalance, trend flips, deposits, reload) and a live server smoke test;
+Binance is geo-blocked from the research server, so live quotes were not exercised there.
+
 **Internet/Reddit survey (2026-09).** LLMs trading on their own lost money in the Alpha Arena live contest (4 of 6
 models down; Claude −42%, Gemini −46%); Reddit "ChatGPT trader" stories are weeks-long and unverified; bots
 advertising ~1%/day are not credible. AI reading news for small stocks (Lopez-Lira & Tang) is documented but

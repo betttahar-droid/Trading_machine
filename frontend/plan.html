@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trading Plan</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: { extend: {
+        colors: { brand: { bg: '#0A0D14', surface: '#121722', card: '#161D2C', border: '#212B3E',
+                           accent: '#00F0FF', emerald: '#10B981', rose: '#F43F5E', purple: '#8B5CF6' } },
+        fontFamily: { mono: ['JetBrains Mono', 'Menlo', 'monospace'], sans: ['Inter', 'system-ui', 'sans-serif'] }
+      } }
+    };
+  </script>
+  <style>
+    body { background-color: #0A0D14; color: #E2E8F0; font-family: 'Inter', system-ui, sans-serif; }
+    .card { background: #161D2C; border: 1px solid #212B3E; border-radius: 12px; }
+    input, select { background: #0A0D14; border: 1px solid #212B3E; border-radius: 8px; padding: 8px 10px; color: #E2E8F0; width: 100%; }
+    th { text-align: left; font-weight: 600; color: #94A3B8; font-size: 12px; padding: 6px 8px; }
+    td { padding: 6px 8px; font-size: 13px; border-top: 1px solid #212B3E; }
+    .num { font-variant-numeric: tabular-nums; }
+  </style>
+</head>
+<body class="min-h-screen">
+<div class="max-w-6xl mx-auto px-4 py-6 space-y-5">
+
+  <header class="flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <h1 class="text-xl font-bold text-white">Trading plan <span class="text-xs font-mono text-amber-400 align-middle ml-2 px-2 py-0.5 rounded border border-amber-500/40">PAPER MONEY</span></h1>
+      <p class="text-sm text-slate-400">Crypto trend (8 coins) + TradFi trend (gold, silver, S&amp;P 500, Nasdaq 100 perps on Binance), one risk level.</p>
+    </div>
+    <a href="/" class="text-sm text-brand-accent hover:underline">Open full dashboard →</a>
+  </header>
+
+  <!-- Setup -->
+  <section class="card p-5">
+    <h2 class="text-sm font-semibold text-white mb-4">Set up a plan</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <label class="block"><span class="text-xs text-slate-400">Starting budget (USDT)</span>
+        <input id="budget" type="number" min="50" step="50" value="500"></label>
+      <label class="block"><span class="text-xs text-slate-400">Risk level</span>
+        <select id="risk">
+          <option value="1">1 — calm</option>
+          <option value="1.5">1.5</option>
+          <option value="2" selected>2 — balanced</option>
+          <option value="2.5">2.5</option>
+          <option value="3">3 — aggressive</option>
+        </select></label>
+      <label class="block"><span class="text-xs text-slate-400">Monthly deposit (USDT)</span>
+        <input id="deposit" type="number" min="0" step="10" value="100"></label>
+      <label class="block"><span class="text-xs text-slate-400">Target (USDT)</span>
+        <input id="target" type="number" min="100" step="500" value="10000"></label>
+    </div>
+    <label class="flex items-center gap-2 mt-4 text-sm text-slate-300">
+      <input id="tradfi" type="checkbox" checked style="width:auto"> Include gold / silver / S&amp;P 500 / Nasdaq 100 (TradFi perps)
+    </label>
+    <div id="riskInfo" class="mt-4 text-sm text-slate-300 bg-brand-bg border border-brand-border rounded-lg p-3"></div>
+    <div class="flex flex-wrap gap-3 mt-4">
+      <button id="startBtn" class="px-4 py-2 rounded-lg bg-brand-accent text-black font-semibold text-sm hover:opacity-90">Start new plan</button>
+      <button id="pauseBtn" class="px-4 py-2 rounded-lg border border-brand-border text-sm hover:bg-brand-surface">Pause</button>
+      <button id="resumeBtn" class="px-4 py-2 rounded-lg border border-brand-border text-sm hover:bg-brand-surface">Resume</button>
+      <span id="msg" class="text-sm text-slate-400 self-center"></span>
+    </div>
+  </section>
+
+  <!-- Money -->
+  <section class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+    <div class="card p-4"><div class="text-xs text-slate-400">Equity</div><div id="equity" class="text-2xl font-bold text-white num">–</div></div>
+    <div class="card p-4"><div class="text-xs text-slate-400">Deposited so far</div><div id="deposited" class="text-2xl font-bold text-white num">–</div></div>
+    <div class="card p-4"><div class="text-xs text-slate-400">Trading profit</div><div id="pnl" class="text-2xl font-bold num">–</div></div>
+    <div class="card p-4"><div class="text-xs text-slate-400">Status</div><div id="status" class="text-lg font-semibold">–</div><div id="checked" class="text-xs text-slate-500"></div></div>
+  </section>
+
+  <section class="card p-4">
+    <div class="flex justify-between text-sm mb-2"><span class="text-slate-300">Progress to target</span><span id="progressTxt" class="num text-slate-300">–</span></div>
+    <div class="h-3 bg-brand-bg rounded-full overflow-hidden border border-brand-border"><div id="progressBar" class="h-full bg-brand-emerald" style="width:0%"></div></div>
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3 text-sm text-slate-400">
+      <div>Next deposit: <span id="nextDeposit" class="text-slate-200">–</span></div>
+      <div>Next TradFi rebalance: <span id="nextRebalance" class="text-slate-200">–</span></div>
+      <div>Exposure: <span id="exposure" class="text-slate-200">–</span></div>
+    </div>
+    <div id="tradfiError" class="mt-2 text-sm text-amber-400"></div>
+  </section>
+
+  <!-- Books -->
+  <section class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <div class="card p-4 overflow-x-auto">
+      <h2 class="text-sm font-semibold text-white mb-2">Crypto trend book</h2>
+      <p class="text-xs text-slate-500 mb-2">4h bars, buys a 20-day breakout, trailing stop at 4× ATR. Signals are rare: expect 1–2 entries a week.</p>
+      <table class="w-full"><thead><tr><th>Coin</th><th>Entry</th><th>Price</th><th>Stop</th><th>P&amp;L</th></tr></thead><tbody id="cryptoRows"></tbody></table>
+      <h3 class="text-xs font-semibold text-slate-400 mt-4 mb-1">Scanner</h3>
+      <table class="w-full"><thead><tr><th>Coin</th><th>Status</th><th>Note</th></tr></thead><tbody id="scanRows"></tbody></table>
+    </div>
+    <div class="card p-4 overflow-x-auto">
+      <h2 class="text-sm font-semibold text-white mb-2">TradFi trend book</h2>
+      <p class="text-xs text-slate-500 mb-2">Rebalanced monthly: holds an asset while its 12-month return is positive, sized by its volatility.</p>
+      <table class="w-full"><thead><tr><th>Asset</th><th>12m return</th><th>Volatility</th><th>Target</th><th>Held</th><th>P&amp;L</th></tr></thead><tbody id="tradfiRows"></tbody></table>
+    </div>
+  </section>
+
+  <section class="card p-4 overflow-x-auto">
+    <h2 class="text-sm font-semibold text-white mb-2">Recent trades</h2>
+    <table class="w-full"><thead><tr><th>Time</th><th>Symbol</th><th>Action</th><th>Price</th><th>P&amp;L</th><th>Reason</th></tr></thead><tbody id="tradeRows"></tbody></table>
+  </section>
+
+  <p class="text-xs text-slate-500">Paper trading only: prices are live from Binance, fills are simulated with fees, slippage and funding. Past results do not guarantee future ones.</p>
+</div>
+
+<script>
+const RISK_INFO = {
+  "1":   "Level 1: crypto trades risk 0.68% each; TradFi book targets 15% yearly volatility. Historically about −25% worst drop. With 500 + 100/month: ~20% chance of 10,000 within 3 years.",
+  "1.5": "Level 1.5: between calm and balanced. Historically about −35% worst drop.",
+  "2":   "Level 2: crypto trades risk 1.36% each; TradFi targets 29% volatility (capped at 3× equity). Historically about −45% worst drop. With 500 + 100/month: ~68% chance of 10,000 within 3 years, ~9% chance of being below your deposits after 2 years.",
+  "2.5": "Level 2.5: between balanced and aggressive. Historically about −50% worst drop.",
+  "3":   "Level 3: crypto trades risk 2.04% each; TradFi at its 3× cap. Historically about −60% worst drop. With 500 + 100/month: ~83% chance of 10,000 within 3 years, ~11% chance of being below your deposits after 2 years."
+};
+const $ = id => document.getElementById(id);
+const fmt = (v, d = 2) => (v === null || v === undefined || isNaN(v)) ? '–' : Number(v).toLocaleString(undefined, {minimumFractionDigits: d, maximumFractionDigits: d});
+const pct = (v, d = 1) => (v === null || v === undefined || isNaN(v)) ? '–' : (v >= 0 ? '+' : '') + Number(v).toFixed(d) + '%';
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+const color = v => v > 0 ? 'text-emerald-400' : (v < 0 ? 'text-rose-400' : 'text-slate-300');
+
+function showRisk() { $('riskInfo').textContent = RISK_INFO[$('risk').value] + ' These figures come from historical simulations, not promises.'; }
+$('risk').addEventListener('change', showRisk); showRisk();
+
+async function post(path, body) {
+  const r = await fetch(path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: body ? JSON.stringify(body) : undefined});
+  return r.json();
+}
+
+$('startBtn').onclick = async () => {
+  if (!confirm('Start a new plan? This resets the paper account (positions and trade history) to the budget.')) return;
+  $('msg').textContent = 'Starting…';
+  const res = await post('/api/plan/start', {
+    budget: parseFloat($('budget').value), risk_level: parseFloat($('risk').value),
+    monthly_deposit: parseFloat($('deposit').value), target: parseFloat($('target').value), tradfi: $('tradfi').checked
+  });
+  $('msg').textContent = res.status === 'started' ? 'Plan started.' : (res.message || JSON.stringify(res));
+  refresh();
+};
+$('pauseBtn').onclick = async () => { const r = await post('/api/plan/pause'); $('msg').textContent = r.status || ''; refresh(); };
+$('resumeBtn').onclick = async () => { const r = await post('/api/plan/resume'); $('msg').textContent = r.status || r.message || ''; refresh(); };
+
+async function refresh() {
+  let s;
+  try { s = await (await fetch('/api/plan/status')).json(); } catch (e) { $('status').textContent = 'server offline'; return; }
+  const plan = s.plan || {};
+  $('equity').textContent = fmt(s.equity);
+  $('deposited').textContent = fmt(s.deposited);
+  $('pnl').textContent = `${s.pnl >= 0 ? '+' : ''}${fmt(s.pnl)} (${pct(s.pnl_pct)})`;
+  $('pnl').className = 'text-2xl font-bold num ' + color(s.pnl);
+  $('status').textContent = !plan.active ? 'no plan' : (s.is_running ? `running · risk ${plan.risk_level}` : `paused · risk ${plan.risk_level}`);
+  $('status').className = 'text-lg font-semibold ' + (s.is_running ? 'text-emerald-400' : 'text-amber-400');
+  $('checked').textContent = s.last_checked_at ? 'last check ' + new Date(s.last_checked_at * 1000).toLocaleTimeString() : '';
+  const prog = Math.max(0, Math.min(100, s.progress_pct || 0));
+  $('progressBar').style.width = prog + '%';
+  $('progressTxt').textContent = `${fmt(s.equity, 0)} / ${fmt(s.target, 0)} (${fmt(s.progress_pct, 1)}%)`;
+  $('nextDeposit').textContent = s.next_deposit_at ? `${fmt(s.monthly_deposit, 0)} on ${new Date(s.next_deposit_at * 1000).toLocaleDateString()}` : 'none';
+  $('nextRebalance').textContent = plan.tradfi ? (plan.next_rebalance || '–') : 'TradFi off';
+  const ex = s.exposure || {};
+  $('exposure').textContent = `crypto ${fmt(ex.CRYPTO, 2)}× · TradFi ${fmt(ex.TRADFI, 2)}× equity`;
+  $('tradfiError').textContent = plan.tradfi_error ? 'TradFi: ' + plan.tradfi_error + ' (retrying automatically)' : '';
+
+  const crypto = (s.books || {}).CRYPTO || [];
+  $('cryptoRows').innerHTML = crypto.length ? crypto.map(p => `<tr><td>${esc(p.name)}</td><td class="num">${fmt(p.entry_price, 4)}</td><td class="num">${fmt(p.price, 4)}</td><td class="num">${p.stop ? fmt(p.stop, 4) : '–'}</td><td class="num ${color(p.unrealized_pnl)}">${fmt(p.unrealized_pnl)} (${pct(p.unrealized_pct)})</td></tr>`).join('')
+    : '<tr><td colspan="5" class="text-slate-500">No open crypto positions (waiting for a breakout).</td></tr>';
+  $('scanRows').innerHTML = (s.crypto_scanner || []).map(r => `<tr><td>${esc((r.symbol || '').replace('USDT', ''))}</td><td class="text-xs">${esc(r.status)}</td><td class="text-xs text-slate-400">${esc(r.note)}</td></tr>`).join('');
+
+  const held = Object.fromEntries(((s.books || {}).TRADFI || []).map(p => [p.symbol, p]));
+  const names = {XAUUSDT: 'Gold', XAGUSDT: 'Silver', SPYUSDT: 'S&P 500', QQQUSDT: 'Nasdaq 100'};
+  const etf = {XAUUSDT: 'GLD', XAGUSDT: 'SLV', SPYUSDT: 'SPY', QQQUSDT: 'QQQ'};
+  $('tradfiRows').innerHTML = Object.keys(names).map(sym => {
+    const sig = (plan.tradfi_signals || {})[etf[sym]] || {};
+    const w = (plan.tradfi_weights || {})[sym];
+    const p = held[sym];
+    return `<tr><td>${names[sym]}</td><td class="num ${color(sig.mom12)}">${sig.mom12 !== undefined ? pct(sig.mom12 * 100) : '–'}</td>
+      <td class="num">${sig.vol60 !== undefined ? fmt(sig.vol60 * 100, 0) + '%' : '–'}</td>
+      <td class="num">${w !== undefined ? fmt(w, 2) + '×' : '–'}</td>
+      <td class="num">${p ? fmt(p.notional, 0) : '–'}</td>
+      <td class="num ${p ? color(p.unrealized_pnl) : ''}">${p ? fmt(p.unrealized_pnl) : '–'}</td></tr>`;
+  }).join('');
+
+  $('tradeRows').innerHTML = (s.recent_trades || []).length ? s.recent_trades.map(t => `<tr><td class="text-xs">${esc(t.datetime)}</td><td>${esc((t.symbol || '').replace('USDT', ''))}</td><td class="text-xs">${esc(t.side)}</td><td class="num">${fmt(t.price, 4)}</td><td class="num ${color(t.pnl_usd)}">${fmt(t.pnl_usd)}</td><td class="text-xs text-slate-400">${esc(t.reason)}</td></tr>`).join('')
+    : '<tr><td colspan="6" class="text-slate-500">No trades yet.</td></tr>';
+
+  if (plan.active && plan.budget && !document.activeElement.matches('input,select')) {
+    $('budget').value = plan.budget; $('risk').value = String(plan.risk_level);
+    $('deposit').value = s.monthly_deposit; $('target').value = s.target; $('tradfi').checked = !!plan.tradfi; showRisk();
+  }
+}
+refresh();
+setInterval(refresh, 10000);
+</script>
+</body>
+</html>

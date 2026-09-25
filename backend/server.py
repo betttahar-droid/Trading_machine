@@ -673,6 +673,36 @@ class RecurringDepositRequest(BaseModel):
 def set_recurring_deposit(req: RecurringDepositRequest):
     return paper_trader.set_recurring_deposit(req.amount, req.target)
 
+# ==========================================
+# PLAN: crypto trend + TradFi trend at one risk level (frontend/plan.html)
+# ==========================================
+class PlanStartRequest(BaseModel):
+    budget: float = 500.0
+    risk_level: float = 2.0          # 1 = calm ... 3 = aggressive (see tradfi_book.py)
+    monthly_deposit: float = 100.0
+    target: float = 10000.0
+    tradfi: bool = True              # include gold / silver / S&P 500 / Nasdaq 100 perps
+
+@app.get("/plan")
+def serve_plan():
+    return FileResponse(os.path.join(frontend_dir, "plan.html"))
+
+@app.post("/api/plan/start")
+def start_plan(req: PlanStartRequest):
+    return paper_trader.start_plan(req.budget, req.risk_level, req.monthly_deposit, req.target, req.tradfi)
+
+@app.post("/api/plan/pause")
+def pause_plan():
+    return paper_trader.pause_plan()
+
+@app.post("/api/plan/resume")
+def resume_plan():
+    return paper_trader.resume_plan()
+
+@app.get("/api/plan/status")
+def get_plan_status():
+    return paper_trader.get_plan_status()
+
 class SetCashRequest(BaseModel):
     cash: float = 10000.0
 

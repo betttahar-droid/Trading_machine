@@ -116,6 +116,8 @@ class PaperTrader:
         self.monthly_deposit = 0.0
         self.last_deposit_ts = 0.0
         self.equity_target = 10000.0
+        # Combined plan (crypto trend + TradFi trend) started from plan.html; see start_plan()
+        self.plan: Dict[str, Any] = {"active": False}
         self.load_state()
 
         # Resilient auto-recovery: If active positions exist or is_running was True, auto-resume background worker thread
@@ -206,6 +208,12 @@ class PaperTrader:
                         self.radar_scan_results = data.get("radar_scan_results", [])
                         self.strategy_mode = data.get("strategy_mode", "TREND")
                         self.trend_last_bar = data.get("trend_last_bar", {})
+                        self.plan = data.get("plan", {"active": False})
+                        if self.plan.get("active"):
+                            from dataclasses import replace
+                            from backend.tradfi_book import CRYPTO_RISK_PER_LEVEL
+                            self.trend_params = replace(self.trend_params,
+                                                        risk_pct=CRYPTO_RISK_PER_LEVEL * float(self.plan.get("risk_level", 1.0)))
                         self.monthly_deposit = float(data.get("monthly_deposit", 0.0))
                         self.last_deposit_ts = float(data.get("last_deposit_ts", 0.0))
                         self.equity_target = float(data.get("equity_target", 10000.0))
@@ -268,7 +276,8 @@ class PaperTrader:
                     "trend_last_bar": getattr(self, "trend_last_bar", {}),
                     "monthly_deposit": getattr(self, "monthly_deposit", 0.0),
                     "last_deposit_ts": getattr(self, "last_deposit_ts", 0.0),
-                    "equity_target": getattr(self, "equity_target", 10000.0)
+                    "equity_target": getattr(self, "equity_target", 10000.0),
+                    "plan": getattr(self, "plan", {"active": False})
                 }
                 with open(STATE_FILE, "w", encoding="utf-8") as f:
                     json.dump(data, f, indent=2)
@@ -962,7 +971,7 @@ class PaperTrader:
         exit_slip = self.slippage_bps / 10000.0
 
         for pos_sym, pos in list(self.positions.items()):
-            if pos.get("strategy") == "TREND":
+            if pos.get("strategy") in ("TREND", "TRADFI"):
                 continue
             pos_candles = self.fetch_klines(interval=self.interval, limit=10, symbol=pos_sym)
             if not pos_candles:
@@ -1465,6 +1474,209 @@ class PaperTrader:
         self.last_trade_closed_at = time.time()
         logger.info(f"[TREND EXIT] {pos['side']} {sym} @ {exit_px} ({reason}) net ${net:.2f}")
 
+    # ------------------------------------------------------------------
+    # Combined plan: crypto trend (8 coins) + TradFi trend (gold, silver, S&P 500, Nasdaq 100 perps)
+    # ------------------------------------------------------------------
+    TRADFI_MARGIN = 5.0   # paper margin per TradFi position = notional / 5 (cross margin on Binance)
+
+    def start_plan(self, budget: float, risk_level: float, monthly_deposit: float = 0.0,
+                   target: float = 10000.0, tradfi: bool = True) -> dict:
+        """Reset the paper account to `budget` and run both books at one risk level (see tradfi_book.py)."""
+        from dataclasses import replace
+        from backend.tradfi_book import CRYPTO_RISK_PER_LEVEL, TRADFI_VOL_PER_LEVEL
+        if budget < 50 or not 0.5 <= risk_level <= 3.0 or monthly_deposit < 0 or target <= budget:
+            return {"status": "error", "message": "Need budget >= 50, risk level 0.5-3, deposit >= 0, target > budget."}
+        if self.is_running:
+            self.stop()
+        self.reset(float(budget))
+        with self.lock:
+            self.strategy_mode = "TREND"
+            self.scanner_universe = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT", "XRPUSDT", "BNBUSDT", "AVAXUSDT", "SUIUSDT"]
+            self.trend_params = replace(self.trend_params, risk_pct=CRYPTO_RISK_PER_LEVEL * risk_level)
+            self.trend_last_bar = {}
+            self.plan = {
+                "active": True, "tradfi": bool(tradfi), "budget": float(budget), "risk_level": float(risk_level),
+                "crypto_risk_pct": CRYPTO_RISK_PER_LEVEL * risk_level, "tradfi_target_vol": TRADFI_VOL_PER_LEVEL * risk_level,
+                "started_at": time.time(), "tradfi_month": None, "tradfi_weights": {}, "tradfi_signals": {},
+                "tradfi_error": None, "tradfi_retry_at": 0,
+            }
+        self.set_recurring_deposit(float(monthly_deposit), float(target))
+        res = self.start(symbol="BTCUSDT", interval="15m", initial_capital=float(budget))
+        return {"status": "started", "plan": self.plan, "loop": res.get("status")}
+
+    def pause_plan(self) -> dict:
+        return self.stop() if self.is_running else {"status": "not_running"}
+
+    def resume_plan(self) -> dict:
+        if not self.plan.get("active"):
+            return {"status": "error", "message": "No plan to resume; start one first."}
+        if self.is_running:
+            return {"status": "already_running"}
+        return self.start(symbol="BTCUSDT", interval="15m", initial_capital=0.0)   # 0 keeps the current cash
+
+    def _tradfi_quote(self, sym: str) -> Optional[dict]:
+        """Mark price and last funding rate of a TradFi perp (None if unavailable; never another symbol's price)."""
+        cache = self.__dict__.setdefault("_tradfi_quotes", {})
+        now = time.time()
+        if sym in cache and now - cache[sym][0] < 30:
+            return cache[sym][1]
+        try:
+            r = requests.get("https://fapi.binance.com/fapi/v1/premiumIndex", params={"symbol": sym}, timeout=4.0)
+            if r.status_code == 200:
+                d = r.json()
+                q = {"mark": float(d.get("markPrice") or 0.0), "funding_rate": float(d.get("lastFundingRate") or 0.0)}
+                if q["mark"] > 0:
+                    cache[sym] = (now, q)
+                    return q
+        except Exception as e:
+            logger.warning(f"TradFi quote error ({sym}): {e}")
+        return cache[sym][1] if sym in cache else None
+
+    def _tradfi_record(self, sym: str, side: str, px: float, units: float, fee: float, pnl: float, reason: str):
+        dec = 4 if px < 1.0 else 2
+        record = {
+            "id": len(self.trades) + 1, "timestamp": int(time.time()),
+            "datetime": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "symbol": sym, "side": side,
+            "price": round(px, dec), "entry_price": round(px, dec), "exit_price": None, "units": round(units, 6),
+            "gross_usd": round(units * px, 2), "fee_usd": round(fee, 2), "pnl_usd": round(pnl, 2), "pnl_pct": 0.0,
+            "rrr": "tradfi", "reason": reason,
+        }
+        self.trades.append(record)
+        self.append_trade_csv(record)
+        logger.info(f"[TRADFI] {side} {sym} {units:.6f} @ {px} | {reason}")
+
+    def _tradfi_rebalance(self, sym: str, target: float, mark: float, sig: dict):
+        """Move the TradFi position in `sym` to `target` USDT notional (long or flat)."""
+        pos = self.positions.get(sym)
+        if pos and pos.get("strategy") != "TRADFI":
+            return
+        slip = self.slippage_bps / 10000.0
+        cur = pos["units"] * mark if pos else 0.0
+        why = f"monthly rebalance: 12m return {sig['mom12']:+.1%}, volatility {sig['vol60']:.0%} -> target {target:,.0f} USDT"
+        if target < 10.0:
+            if pos:
+                self._trend_close(sym, pos, mark, f"TradFi {why}", "TRADFI_CLOSE")
+            return
+        if pos and abs(target - cur) <= 0.2 * max(cur, target):
+            return                                            # close enough: avoid trading costs
+        if not pos:
+            px = mark * (1 + slip)
+            units, fee, margin = target / px, target * self.taker_fee_rate, target / self.TRADFI_MARGIN
+            self.cash -= margin + fee
+            self.positions[sym] = {
+                "symbol": sym, "side": "LONG", "strategy": "TRADFI", "units": units, "leverage": self.TRADFI_MARGIN,
+                "margin_allocated": margin, "entry_price": px, "current_price": mark, "entry_time": time.time(),
+                "highest_price": px, "lowest_price": px, "stop_loss_price": 0.0, "take_profit_price": 0.0,
+                "tp1_hit": True, "is_trailing": False, "liquidation_price": 0.0, "entry_fee": fee, "funding_paid": 0.0,
+                "funding_checked_ms": int(time.time() * 1000), "initial_risk_usd": target, "execution_type": "TAKER_MARKET",
+            }
+            self._tradfi_record(sym, "TRADFI_BUY_LONG", px, units, fee, -fee, why)
+        elif target > cur:
+            add = target - cur
+            px = mark * (1 + slip)
+            du, fee, margin = add / px, add * self.taker_fee_rate, add / self.TRADFI_MARGIN
+            pos["entry_price"] = (pos["entry_price"] * pos["units"] + px * du) / (pos["units"] + du)
+            pos["units"] += du
+            pos["margin_allocated"] += margin
+            pos["entry_fee"] = pos.get("entry_fee", 0.0) + fee
+            pos["initial_risk_usd"] = target
+            self.cash -= margin + fee
+            self._tradfi_record(sym, "TRADFI_ADD_LONG", px, du, fee, -fee, why)
+        else:
+            px = mark * (1 - slip)
+            du = (cur - target) / mark
+            frac = du / pos["units"]
+            gross = (px - pos["entry_price"]) * du
+            fee = du * px * self.taker_fee_rate
+            release = pos["margin_allocated"] * frac
+            self.cash += release + gross - fee
+            pos["units"] -= du
+            pos["margin_allocated"] -= release
+            pos["initial_risk_usd"] = target
+            self._tradfi_record(sym, "TRADFI_REDUCE_LONG", px, du, fee, gross - fee, why)
+
+    def _evaluate_tradfi_step(self):
+        """Mark and fund TradFi positions every loop; rebalance them once a month (tradfi_book.py rules)."""
+        from backend import tradfi_book as tb
+        now = time.time()
+        now_ms = int(now * 1000)
+        for sym, pos in list(self.positions.items()):
+            if pos.get("strategy") != "TRADFI":
+                continue
+            q = self._tradfi_quote(sym)
+            if not q:
+                continue
+            pos["current_price"] = q["mark"]
+            crossed = now_ms // 28_800_000 - pos.get("funding_checked_ms", now_ms) // 28_800_000
+            if crossed > 0:
+                fund = crossed * q["funding_rate"] * pos["units"] * q["mark"]
+                self.cash -= fund
+                pos["funding_paid"] = pos.get("funding_paid", 0.0) + fund
+            pos["funding_checked_ms"] = now_ms
+
+        plan = self.plan
+        month = datetime.utcfromtimestamp(now).strftime("%Y-%m")
+        if plan.get("tradfi_month") == month or now < plan.get("tradfi_retry_at", 0):
+            return
+        try:
+            sig = tb.signals(tb.etf_history())
+        except Exception as e:
+            sig = {}
+            logger.warning(f"TradFi ETF history unavailable: {e}")
+        weights = tb.target_weights(sig, plan.get("tradfi_target_vol", tb.TRADFI_VOL_PER_LEVEL))
+        quotes = {s: self._tradfi_quote(s) for s in weights}
+        if not weights or any(q is None for q in quotes.values()):
+            plan["tradfi_error"] = ("ETF history (Yahoo Finance) unavailable" if not weights else
+                                    "no Binance price for " + ", ".join(s for s, q in quotes.items() if q is None))
+            plan["tradfi_retry_at"] = now + 900
+            self.save_state()
+            return
+        equity = self._trend_equity()
+        for sym, w in weights.items():
+            self._tradfi_rebalance(sym, equity * w, quotes[sym]["mark"], sig[tb.ASSETS[sym]])
+        plan.update(tradfi_month=month, tradfi_weights=weights, tradfi_signals=sig, tradfi_rebalanced_at=now,
+                    tradfi_error=None, tradfi_retry_at=0)
+        self.save_state()
+
+    def get_plan_status(self) -> dict:
+        """Everything plan.html shows: money, progress, both books' positions, next events, recent trades."""
+        from backend.tradfi_book import NAMES
+        with self.lock:
+            equity = self._trend_equity()
+            deposited = self.initial_capital
+            books = {"CRYPTO": [], "TRADFI": []}
+            for sym, p in self.positions.items():
+                px = float(p.get("current_price", p["entry_price"]))
+                sign = 1.0 if p.get("side", "LONG").upper() == "LONG" else -1.0
+                upnl = (px - p["entry_price"]) * p["units"] * sign
+                book = "TRADFI" if p.get("strategy") == "TRADFI" else "CRYPTO"
+                books[book].append({
+                    "symbol": sym, "name": NAMES.get(sym, sym.replace("USDT", "")), "side": p.get("side", "LONG"),
+                    "units": p["units"], "entry_price": p["entry_price"], "price": px,
+                    "notional": p["units"] * px, "unrealized_pnl": upnl,
+                    "unrealized_pct": upnl / max(p["units"] * p["entry_price"], 1e-9) * 100.0,
+                    "stop": p.get("stop_loss_price") or None, "funding_paid": p.get("funding_paid", 0.0),
+                })
+            now = datetime.utcnow()
+            next_month = datetime(now.year + (now.month == 12), now.month % 12 + 1, 1)
+            plan = dict(self.plan)
+            plan["next_rebalance"] = (next_month.strftime("%Y-%m-%d") if plan.get("tradfi_month") == now.strftime("%Y-%m")
+                                      else "at next check")
+            radar = [{"symbol": r["symbol"], "price": r["price"], "status": r.get("status_label"),
+                      "note": r.get("top_catalyst")} for r in (self.radar_scan_results or [])]
+            return {
+                "plan": plan, "is_running": self.is_running, "equity": equity, "cash": self.cash,
+                "deposited": deposited, "pnl": equity - deposited, "pnl_pct": (equity / max(deposited, 1e-9) - 1) * 100.0,
+                "target": self.equity_target, "progress_pct": equity / max(self.equity_target, 1e-9) * 100.0,
+                "monthly_deposit": self.monthly_deposit,
+                "next_deposit_at": (self.last_deposit_ts + self.DEPOSIT_INTERVAL_S) if self.monthly_deposit > 0 else None,
+                "books": books,
+                "exposure": {b: sum(x["notional"] for x in v) / max(equity, 1e-9) for b, v in books.items()},
+                "crypto_scanner": radar,
+                "recent_trades": self.trades[-20:][::-1],
+                "last_checked_at": self.last_checked_at,
+            }
+
     def _evaluate_trend_step(self) -> dict:
         from backend.trend_strategy import compute_features, entry_signal, exit_on_close, trail_stop, position_size
         p = self.trend_params
@@ -1527,7 +1739,8 @@ class PaperTrader:
                 atr = float(f["atr"][i])
                 long = sig == "LONG"
                 exec_px = live_px * (1.0 + self.slippage_bps / 10000.0 if long else 1.0 - self.slippage_bps / 10000.0)
-                gross_used = sum(x["units"] * float(x.get("current_price", x["entry_price"])) for x in self.positions.values())
+                gross_used = sum(x["units"] * float(x.get("current_price", x["entry_price"]))
+                                 for x in self.positions.values() if x.get("strategy") != "TRADFI")
                 notional = position_size(self._trend_equity(), exec_px, atr, gross_used, p, sig)
                 margin = notional / p.max_gross_leverage
                 fee = notional * self.taker_fee_rate
@@ -1591,6 +1804,9 @@ class PaperTrader:
                 "status_label": "ACTIVE TREND POSITION" if active else ("NEWS BRAKE" if brake else "SCANNING"),
                 "consensus_status": "TREND_MODE",
             })
+
+        if self.plan.get("active") and self.plan.get("tradfi", True):
+            self._evaluate_tradfi_step()
 
         radar.sort(key=lambda r: (r["is_active_trade"], r["score"]), reverse=True)
         self.radar_scan_results = radar
