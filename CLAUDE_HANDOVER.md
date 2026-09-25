@@ -175,7 +175,14 @@ level (1-3), monthly deposit and target; `POST /api/plan/start` resets the paper
 - Recurring deposit every 30 days; `/api/plan/pause`, `/api/plan/resume`, `/api/plan/status`. The plan and its
   risk level persist in `data/paper_trading_state.json`.
 If Yahoo or the Binance TradFi quotes are unavailable, the rebalance waits and retries every 15 minutes (shown on the
-page). Tested with mocked prices (entries, rebalance, trend flips, deposits, reload) and a live server smoke test;
+page). Funding is charged at each symbol's real settlement interval (`/fapi/v1/fundingInfo`: 1h/4h/8h).
+
+**Funding matters for the TradFi book.** Longs paid, Jan-Aug 2026: gold +12.1%/yr of notional, silver +23.0%,
+S&P 500 −6.1% (longs were paid), Nasdaq +0.2%. The ETF backtest had left this out. With it (`cross_asset_lab.py`,
+`FUNDING_2026`), the TradFi book's 2007-now Sharpe drops from 0.88 to 0.68 (T-bill financing instead: 0.78), and the
+combined out-of-sample Sharpe from 1.93 to 1.74, still well above crypto alone (1.17). Level 2 odds (500 + 100/month,
+stricter bootstrap): 10k within 36 months 62% (was 70%), below deposits at 24 months 12% (was 9%). Yearly costs at
+level 2: crypto ~1.5% fees + ~1.8% funding; TradFi <0.5% fees + ~8% funding at 2026 rates with September 2026 weights. Tested with mocked prices (entries, rebalance, trend flips, deposits, reload) and a live server smoke test;
 Binance is geo-blocked from the research server, so live quotes were not exercised there.
 
 **Internet/Reddit survey (2026-09).** LLMs trading on their own lost money in the Alpha Arena live contest (4 of 6

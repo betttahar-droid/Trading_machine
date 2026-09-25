@@ -1514,6 +1514,23 @@ class PaperTrader:
             return {"status": "already_running"}
         return self.start(symbol="BTCUSDT", interval="15m", initial_capital=0.0)   # 0 keeps the current cash
 
+    def _funding_interval_ms(self, sym: str) -> int:
+        """Funding settlement interval: 8h by default; Binance's /fundingInfo lists symbols settling every 1h or 4h
+        (the TradFi perps and many coins do)."""
+        info = self.__dict__.setdefault("_funding_info", {"ts": 0.0, "hours": {}})
+        if time.time() - info["ts"] > 6 * 3600:
+            try:
+                r = requests.get("https://fapi.binance.com/fapi/v1/fundingInfo", timeout=5.0)
+                if r.status_code == 200:
+                    info["hours"] = {d["symbol"]: int(d.get("fundingIntervalHours") or 8) for d in r.json()}
+                    info["ts"] = time.time()
+                else:
+                    info["ts"] = time.time() - 5 * 3600        # retry in an hour
+            except Exception as e:
+                logger.warning(f"fundingInfo fetch error: {e}")
+                info["ts"] = time.time() - 5 * 3600
+        return info["hours"].get(sym, 8) * 3_600_000
+
     def _tradfi_quote(self, sym: str) -> Optional[dict]:
         """Mark price and last funding rate of a TradFi perp (None if unavailable; never another symbol's price)."""
         cache = self.__dict__.setdefault("_tradfi_quotes", {})
@@ -1607,7 +1624,8 @@ class PaperTrader:
             if not q:
                 continue
             pos["current_price"] = q["mark"]
-            crossed = now_ms // 28_800_000 - pos.get("funding_checked_ms", now_ms) // 28_800_000
+            step = self._funding_interval_ms(sym)
+            crossed = now_ms // step - pos.get("funding_checked_ms", now_ms) // step
             if crossed > 0:
                 fund = crossed * q["funding_rate"] * pos["units"] * q["mark"]
                 self.cash -= fund
@@ -1709,7 +1727,8 @@ class PaperTrader:
                 pos["current_price"] = live_px
                 # Funding: charged at each 8h settlement crossed while the position is open
                 last_f = pos.get("funding_checked_ms", now_ms)
-                crossed = now_ms // 28_800_000 - last_f // 28_800_000
+                step = self._funding_interval_ms(sym)
+                crossed = now_ms // step - last_f // step
                 if crossed > 0:
                     rate = self.fetch_derivatives_data(sym).get("funding_rate", 0.0)
                     fund = crossed * rate * pos["units"] * live_px * (1.0 if long else -1.0)

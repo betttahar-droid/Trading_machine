@@ -30,6 +30,9 @@ from backend.universe_data import available_months
 ETFS = ["SPY", "QQQ", "IWM", "EFA", "EEM", "TLT", "IEF", "GLD", "SLV", "DBC", "VNQ", "UUP"]
 # What Binance Futures lists as USDT "TradFi" perpetuals (since 2026): S&P 500, Nasdaq 100, gold, silver
 BINANCE_TRADFI = {"SPY": "SPYUSDT", "QQQ": "QQQUSDT", "GLD": "XAUUSDT", "SLV": "XAGUSDT"}
+# Funding longs paid on those perps, Jan-Aug 2026, per year of notional (data.binance.vision fundingRate files).
+# Holding a perp costs funding; the ETF returns above do not include it.
+FUNDING_2026 = {"GLD": 0.121, "SLV": 0.230, "SPY": -0.061, "QQQ": 0.002}
 TARGET_VOL = 0.12
 COST = 0.0005
 
@@ -40,7 +43,8 @@ def etf_prices(start: str = "2006-01-01") -> pd.DataFrame:
     return px.dropna(how="all")
 
 
-def tsmom_returns(px: pd.DataFrame) -> pd.Series:
+def tsmom_returns(px: pd.DataFrame, funding: dict = None) -> pd.Series:
+    """funding: yearly cost per ETF column charged on the notional held (e.g. FUNDING_2026)."""
     ret = px.pct_change(fill_method=None)
     mom = px / px.shift(252) - 1
     vol = ret.rolling(60, min_periods=40).std() * np.sqrt(252)
@@ -51,6 +55,8 @@ def tsmom_returns(px: pd.DataFrame) -> pd.Series:
     held = w.shift(1).fillna(0.0)                        # decided at the close, earns from the next day
     gross = (held * ret.fillna(0.0)).sum(axis=1)
     cost = (held - held.shift(1).fillna(0.0)).abs().sum(axis=1) * COST
+    if funding:
+        cost = cost + (held * pd.Series(funding).reindex(held.columns).fillna(0.0) / 252).sum(axis=1)
     return gross - cost
 
 
@@ -128,8 +134,10 @@ def main():
 
     # Stricter: ETF months drawn from 2007 .. now (2008, 2016-18 included), crypto months from 2024-07 .. now
     scale = both["crypto trend (1% risk)"][START:"2024-06-30"].std() / (both * w).sum(axis=1)[START:"2024-06-30"].std()
-    for label, prices in (("all 12 ETFs", px), ("Binance TradFi only (SPY, QQQ, gold, silver)", px[list(BINANCE_TRADFI)])):
-        book = tsmom_returns(prices)
+    for label, prices, fund in (("all 12 ETFs", px, None),
+                                ("Binance TradFi only (SPY, QQQ, gold, silver)", px[list(BINANCE_TRADFI)], None),
+                                ("Binance TradFi, with 2026 perp funding", px[list(BINANCE_TRADFI)], FUNDING_2026)):
+        book = tsmom_returns(prices, fund)
         long_hist = book["2007-01-01":]
         cal = long_hist.reindex(pd.date_range(long_hist.index.min(), long_hist.index.max(), freq="D")).fillna(0.0)
         b = book["2007":]
