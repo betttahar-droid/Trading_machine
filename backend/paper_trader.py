@@ -12,6 +12,7 @@ from typing import Dict, Any, List, Optional
 import requests
 import numpy as np
 from backend.dual_model_engine import dual_model_engine
+from backend.news_guard import news_guard
 
 logger = logging.getLogger("layaquant.papertrader")
 
@@ -1483,7 +1484,10 @@ class PaperTrader:
                         pos = None
 
             sig = entry_signal(f, i, p)
-            if pos is None and sym not in self.positions and new_bar and sig:
+            brake = news_guard.block_reason(sym)
+            if brake and sig and pos is None and sym not in self.positions and new_bar:
+                logger.warning(f"[NEWS BRAKE] skipped {sig} {sym} breakout: {brake}")
+            if pos is None and sym not in self.positions and new_bar and sig and not brake:
                 atr = float(f["atr"][i])
                 long = sig == "LONG"
                 exec_px = live_px * (1.0 + self.slippage_bps / 10000.0 if long else 1.0 - self.slippage_bps / 10000.0)
@@ -1545,9 +1549,10 @@ class PaperTrader:
                 "score": round(max(0.0, min(100.0, 100.0 - max(0.0, dist_up) * 10.0)), 1),
                 "choice": "BUY_LONG" if (sig == "LONG" and not active) else ("SELL_SHORT" if (sig == "SHORT" and not active) else "WAIT"),
                 "news_score": 0.0,
-                "top_catalyst": f"{p.entry_n}-bar high ${upper:.{4 if upper < 1 else 2}f} ({dist_up:+.1f}% away)",
+                "top_catalyst": (f"NEWS BRAKE: {brake}" if brake else
+                                 f"{p.entry_n}-bar high ${upper:.{4 if upper < 1 else 2}f} ({dist_up:+.1f}% away)"),
                 "is_active_trade": active,
-                "status_label": "ACTIVE TREND POSITION" if active else "SCANNING",
+                "status_label": "ACTIVE TREND POSITION" if active else ("NEWS BRAKE" if brake else "SCANNING"),
                 "consensus_status": "TREND_MODE",
             })
 

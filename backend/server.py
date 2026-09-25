@@ -68,6 +68,8 @@ def init_laya_model():
         agent = laya.load(MODEL_NAME, device=device_str)
         laya_agent = agent
         engine_type = "convai-laya-neural"
+        from backend.news_guard import news_guard
+        news_guard.attach_agent(agent)
         logger.info("Successfully loaded convaiinnovations/laya System 1 neural engine!")
     except Exception as e:
         logger.warning(f"Could not load convaiinnovations/laya directly: {e}. Active mode: calibrated-heuristic-fallback.")
@@ -563,6 +565,16 @@ def paper_decision_bridge(market_state: dict):
     }
 
 paper_trader.decision_callback = paper_decision_bridge
+
+@app.on_event("startup")
+def startup_news_guard():
+    from backend.news_guard import news_guard
+    news_guard.start()
+
+@app.get("/api/news_guard/status")
+def get_news_guard_status():
+    from backend.news_guard import news_guard
+    return news_guard.status()
 
 @app.on_event("startup")
 def startup_paper_trader():

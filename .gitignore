@@ -1,4 +1,3 @@
 __pycache__/
 *.pyc
-data/backtest_cache/
-data/bulk_cache/
+data/
