@@ -32,13 +32,18 @@ TEXT_RE = re.compile(r'<div class="tgme_widget_message_text[^"]*"[^>]*>(.*?)</di
 
 def _page(channel: str, before: Optional[int] = None) -> List[dict]:
     url = f"https://t.me/s/{channel}" + (f"?before={before}" if before else "")
-    for attempt in range(6):
-        r = requests.get(url, headers=UA, timeout=30)
-        if r.status_code == 200:
-            break
+    status = None
+    for attempt in range(8):
+        try:
+            r = requests.get(url, headers=UA, timeout=30)
+            status = r.status_code
+            if status == 200:
+                break
+        except requests.RequestException as e:          # dropped connections happen on long runs
+            status = repr(e)
         time.sleep(10 * (attempt + 1))
     else:
-        raise RuntimeError(f"t.me/s/{channel} returned {r.status_code}")
+        raise RuntimeError(f"t.me/s/{channel} failed: {status}")
     out = []
     for block in r.text.split('<div class="tgme_widget_message_wrap')[1:]:
         m = MSG_RE.search(block)

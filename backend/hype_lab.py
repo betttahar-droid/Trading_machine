@@ -10,11 +10,16 @@ For every entry of the live trend strategy (8 coins, 4h, 120-bar breakout) this 
   laya_hype     Laya's P(headline is hype: price predictions, "to the moon", FOMO), averaged
   wiki_attn     English Wikipedia pageviews of the coin's article over the 3 days before entry relative to
                 the prior 30 days (public attention; available up to now, so it has a real out-of-sample)
+  tg_attn/tone/hype   the same for the @WatcherGuru Telegram channel (breaking news / hype, 2021-07 on)
+  whale_in_attn USD moved onto exchanges in the coin (@whale_alert_io) in the 72h before entry vs. the
+                prior 30-day rate; whale_net = (into - out of exchanges) / (into + out of)
+  stable_in_attn / stable_net   the same for USDT + USDC (stablecoins arriving at exchanges = buying power)
 
 Each measure is fixed in advance (no thresholds fitted): trades are split into thirds by the measure and
 the top third is compared with the bottom third, with a permutation test (how often a random split
 gives a gap at least as large). X/Twitter history is not available without a paid API, and Reddit's
-API refuses these requests, so news and Wikipedia stand in for "social hype".
+API refuses these requests, so news, Wikipedia and public Telegram channels (telegram_data.py) stand in
+for "social hype".
 
     python -m backend.hype_lab
 """
@@ -117,6 +122,63 @@ def laya_tone(titles: List[str]) -> Dict[str, dict]:
     return cache
 
 
+MEASURES = ["news_count", "news_attn", "laya_tone", "laya_hype", "wiki_attn", "tg_attn", "tg_tone", "tg_hype",
+            "whale_in_attn", "whale_net", "stable_in_attn", "stable_net"]
+
+
+def _window(ts: np.ndarray, end: int, days: float) -> slice:
+    return slice(np.searchsorted(ts, end - days * DAY), np.searchsorted(ts, end))
+
+
+def telegram_measures(trades: pd.DataFrame) -> pd.DataFrame:
+    """WatcherGuru attention/tone/hype and Whale Alert exchange flows in the 72h before each entry."""
+    from backend.telegram_data import load_channel, parse_whale
+    watch = load_channel("WatcherGuru")
+    if watch:
+        wts = np.array([m["ts"] for m in watch])
+        texts = [m["text"][:300] for m in watch]
+        low = [t.lower() for t in texts]
+        mention = {sym: np.array([bool(re.search("|".join(rf"\b{re.escape(a)}\b" for a in al), t)) for t in low])
+                   for sym, al in ALIASES.items()}
+        sample, attn = {}, []
+        for k, t in trades.iterrows():
+            if t.entry_s < wts[0] + 33 * DAY:
+                attn.append(np.nan)
+                continue
+            w72, w30 = _window(wts, t.entry_s, 3), _window(wts, t.entry_s - 3 * DAY, 30)
+            hits = np.flatnonzero(mention[t.sym][w72]) + w72.start
+            attn.append(len(hits) / max(mention[t.sym][w30].sum() / 10.0, 1.0))
+            sample[k] = sorted((texts[i] for i in hits), key=lambda s: zlib.crc32(s.encode()))[:PER_TRADE]
+        trades["tg_attn"] = attn
+        tone = laya_tone([x for v in sample.values() for x in v])
+        trades["tg_tone"] = [np.mean([tone[x]["bull"] - tone[x]["bear"] for x in sample[k]]) if sample.get(k) else np.nan
+                             for k in trades.index]
+        trades["tg_hype"] = [np.mean([tone[x]["hype"] for x in sample[k]]) if sample.get(k) else np.nan
+                             for k in trades.index]
+    whales = [w for w in (parse_whale(m) for m in load_channel("whale_alert_io")) if w]
+    if whales:
+        wdf = pd.DataFrame(whales).sort_values("ts")
+        first = int(wdf["ts"].iloc[0])
+
+        def flows(coins, end, days):
+            d = wdf[(wdf["ts"] >= end - days * DAY) & (wdf["ts"] < end) & wdf["coin"].isin(coins)]
+            return d.loc[d["flow"] > 0, "usd"].sum(), d.loc[d["flow"] < 0, "usd"].sum()
+        cols = {k: [] for k in ("whale_in_attn", "whale_net", "stable_in_attn", "stable_net")}
+        for t in trades.itertuples():
+            if t.entry_s < first + 33 * DAY:
+                for v in cols.values():
+                    v.append(np.nan)
+                continue
+            for prefix, coins in (("whale", [t.sym.replace("USDT", "")]), ("stable", ["USDT", "USDC"])):
+                i72, o72 = flows(coins, t.entry_s, 3)
+                i30, _ = flows(coins, t.entry_s - 3 * DAY, 30)
+                cols[f"{prefix}_in_attn"].append(i72 / (i30 / 10.0) if i30 > 0 else np.nan)
+                cols[f"{prefix}_net"].append((i72 - o72) / (i72 + o72) if i72 + o72 > 0 else np.nan)
+        for k, v in cols.items():
+            trades[k] = v
+    return trades
+
+
 def split_test(name: str, x: np.ndarray, r: np.ndarray, rng) -> str:
     ok = ~np.isnan(x)
     x, r = x[ok], r[ok]
@@ -185,18 +247,20 @@ def main():
         w30 = s[day - pd.Timedelta(days=33):day - pd.Timedelta(days=4)].mean()
         vals.append(w3 / w30 if w30 and not np.isnan(w30) else np.nan)
     trades["wiki_attn"] = vals
+    trades = telegram_measures(trades)
 
     rng = np.random.default_rng(0)
     r = trades["r"].to_numpy()
     oos = (trades["entry_s"] >= _ms(SPLIT) // 1000).to_numpy()
+    measures = [m for m in MEASURES if m in trades]
     print(f"\nAll trades E[R] {r.mean():+.2f}. Split by each measure at entry (top vs bottom third):")
-    for name in ("news_count", "news_attn", "laya_tone", "laya_hype", "wiki_attn"):
+    for name in measures:
         print(split_test(name, trades[name].to_numpy(), r, rng))
-    print(f"\nOut-of-sample only ({SPLIT} on; news ends {pd.Timestamp(news_end, unit='s'):%Y-%m}):")
-    for name in ("news_attn", "laya_tone", "laya_hype", "wiki_attn"):
+    print(f"\nOut-of-sample only ({SPLIT} on; news archive ends {pd.Timestamp(news_end, unit='s'):%Y-%m}):")
+    for name in measures:
         print(split_test(name, trades[name].to_numpy()[oos], r[oos], rng))
     print("\nCorrelation between measures:")
-    print(trades[["news_attn", "laya_tone", "laya_hype", "wiki_attn"]].corr(method="spearman").round(2).to_string())
+    print(trades[[m for m in measures if m != "news_count"]].corr(method="spearman").round(2).to_string())
     os.makedirs(CACHE, exist_ok=True)
     trades.to_csv(os.path.join(CACHE, "trend_trades_hype.csv"), index=False)
 
