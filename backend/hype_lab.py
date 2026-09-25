@@ -184,15 +184,16 @@ def split_test(name: str, x: np.ndarray, r: np.ndarray, rng) -> str:
     x, r = x[ok], r[ok]
     if len(x) < 30:
         return f"  {name:<11} n={len(x)}: too few"
-    lo, hi = np.quantile(x, [1 / 3, 2 / 3])
-    top, bot = r[x >= hi], r[x <= lo]
+    order = np.lexsort((rng.random(len(x)), x))       # rank by x, ties broken at random
+    k = len(x) // 3
+    bot, mid, top = r[order[:k]], r[order[k:len(x) - k]], r[order[len(x) - k:]]
     gap = top.mean() - bot.mean()
     perm = []
     for _ in range(5000):
         s = rng.permutation(r)
-        perm.append(s[:len(top)].mean() - s[len(top):len(top) + len(bot)].mean())
+        perm.append(s[:k].mean() - s[k:2 * k].mean())
     p = np.mean(np.abs(perm) >= abs(gap))
-    return (f"  {name:<11} n={len(x):3d}  top third E[R] {top.mean():+.2f} | middle {r[(x > lo) & (x < hi)].mean():+.2f} | "
+    return (f"  {name:<14} n={len(x):3d}  top third E[R] {top.mean():+.2f} | middle {mid.mean():+.2f} | "
             f"bottom third {bot.mean():+.2f}  -> gap {gap:+.2f}, random split this large {p:.0%}")
 
 
