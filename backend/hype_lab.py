@@ -11,6 +11,8 @@ For every entry of the live trend strategy (8 coins, 4h, 120-bar breakout) this 
   wiki_attn     English Wikipedia pageviews of the coin's article over the 3 days before entry relative to
                 the prior 30 days (public attention; available up to now, so it has a real out-of-sample)
   tg_attn/tone/hype   the same for the @WatcherGuru Telegram channel (breaking news / hype, 2021-07 on)
+  *_share       share of attention: the coin's spike divided by the average spike of all 8 coins at that moment,
+                so a market-wide frenzy (attention diluted across every coin) is not read as coin-specific hype
   whale_in_attn USD moved onto exchanges in the coin (@whale_alert_io) in the 72h before entry vs. the
                 prior 30-day rate; whale_net = (into - out of exchanges) / (into + out of)
   stable_in_attn / stable_net   the same for USDT + USDC (stablecoins arriving at exchanges = buying power)
@@ -122,12 +124,30 @@ def laya_tone(titles: List[str]) -> Dict[str, dict]:
     return cache
 
 
-MEASURES = ["news_count", "news_attn", "laya_tone", "laya_hype", "wiki_attn", "tg_attn", "tg_tone", "tg_hype",
-            "whale_in_attn", "whale_net", "stable_in_attn", "stable_net"]
+MEASURES = ["news_count", "news_attn", "news_share", "laya_tone", "laya_hype", "wiki_attn", "wiki_share",
+            "tg_attn", "tg_share", "tg_tone", "tg_hype", "whale_in_attn", "whale_net", "stable_in_attn", "stable_net"]
 
 
 def _window(ts: np.ndarray, end: int, days: float) -> slice:
     return slice(np.searchsorted(ts, end - days * DAY), np.searchsorted(ts, end))
+
+
+def attention_shares(ts: np.ndarray, mention: Dict[str, np.ndarray], trades: pd.DataFrame,
+                     first_ok: float, last_ok: float) -> List[float]:
+    """Share of attention: the coin's 72h attention spike (vs. its prior 30 days) divided by the average spike of
+    all 8 coins at the same moment. Attention is finite and gets diluted: when a market-wide frenzy lifts every
+    coin's mentions, that is not coin-specific hype, and the plain ratio would count it as such."""
+    cum = {sym: np.concatenate([[0], np.cumsum(m)]) for sym, m in mention.items()}
+    out = []
+    for t in trades.itertuples():
+        if not first_ok <= t.entry_s < last_ok:
+            out.append(np.nan)
+            continue
+        a, b, c = np.searchsorted(ts, [t.entry_s - 33 * DAY, t.entry_s - 3 * DAY, t.entry_s])
+        ratio = {sym: (cm[c] - cm[b]) / max((cm[b] - cm[a]) / 10.0, 1.0) for sym, cm in cum.items()}
+        avg = np.mean(list(ratio.values()))
+        out.append(ratio[t.sym] / avg if avg > 0 else np.nan)
+    return out
 
 
 def telegram_measures(trades: pd.DataFrame) -> pd.DataFrame:
@@ -150,6 +170,7 @@ def telegram_measures(trades: pd.DataFrame) -> pd.DataFrame:
             attn.append(len(hits) / max(mention[t.sym][w30].sum() / 10.0, 1.0))
             sample[k] = sorted((texts[i] for i in hits), key=lambda s: zlib.crc32(s.encode()))[:PER_TRADE]
         trades["tg_attn"] = attn
+        trades["tg_share"] = attention_shares(wts, mention, trades, wts[0] + 33 * DAY, np.inf)
         tone = laya_tone([x for v in sample.values() for x in v])
         trades["tg_tone"] = [np.mean([tone[x]["bull"] - tone[x]["bear"] for x in sample[k]]) if sample.get(k) else np.nan
                              for k in trades.index]
@@ -230,6 +251,8 @@ def main():
             sample[k] = titles
         feats.append(row)
     trades = pd.concat([trades, pd.DataFrame(feats)], axis=1)
+    trades["news_share"] = attention_shares(ts, {sym: heads[sym].to_numpy() for sym in UNIVERSE}, trades,
+                                            ts[0] + 33 * DAY, news_end)
 
     tone = laya_tone([t for titles in sample.values() for t in titles])
     trades["laya_tone"] = [np.mean([tone[t]["bull"] - tone[t]["bear"] for t in sample[k]]) if sample.get(k) else np.nan
@@ -253,6 +276,18 @@ def main():
         w30 = s[day - pd.Timedelta(days=33):day - pd.Timedelta(days=4)].mean()
         vals.append(w3 / w30 if w30 and not np.isnan(w30) else np.nan)
     trades["wiki_attn"] = vals
+
+    def wiki_ratio(series, day):
+        w3 = series[day - pd.Timedelta(days=3):day - pd.Timedelta(days=1)].mean()
+        w30 = series[day - pd.Timedelta(days=33):day - pd.Timedelta(days=4)].mean()
+        return w3 / w30 if w30 and not np.isnan(w30) else np.nan
+    shares = []
+    for t in trades.itertuples():
+        day = pd.Timestamp(t.entry_s, unit="s").normalize()
+        ratios = {sym: wiki_ratio(ser, day) for sym, ser in wiki.items()}
+        avg = np.nanmean(list(ratios.values()))
+        shares.append(ratios.get(t.sym, np.nan) / avg if t.sym in ratios and avg > 0 else np.nan)
+    trades["wiki_share"] = shares
     trades = telegram_measures(trades)
 
     rng = np.random.default_rng(0)

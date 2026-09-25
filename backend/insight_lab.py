@@ -8,6 +8,8 @@ Sources (all free, all with multi-year history, all cached under data/insight_ca
   Stablecoin supply       DefiLlama (total USD-pegged circulating), 2017 on
   Deribit DVOL            BTC 30-day implied volatility index, 2021 on
   Coinbase premium        Coinbase BTC-USD vs Binance BTCUSDT daily close (US demand)
+  Listing dilution        new USDT perps listed on Binance in the prior 30 days, and all active perps
+                          (universe_data.py): more tokens competing for the same attention and money
 
 For every entry of the live trend strategy (8 coins) each measure is taken from the day before entry.
 Trades are split into thirds by the measure (top vs bottom third, permutation test), separately for
@@ -147,6 +149,13 @@ def main():
     btc_close = load_bars("BTCUSDT", "1d", last_month)["close"]
     btc_close.index = btc_close.index.normalize()
     prem = coinbase_premium(btc_close)
+    from backend.universe_data import daily_panel
+    closes = daily_panel(last_month)["close"]
+    listed = closes.apply(lambda c: c.first_valid_index()).dropna()
+    new_per_day = listed.dt.normalize().value_counts().reindex(closes.index, fill_value=0).sort_index()
+    new30 = new_per_day.rolling(30, min_periods=1).sum()
+    active = closes.notna().sum(axis=1)
+    active.index, new30.index = active.index.normalize(), new30.index.normalize()
     print(f"  fear&greed {len(fg)} days, stablecoins {len(stable)}, DVOL {len(vol)}, Coinbase premium {len(prem)}", flush=True)
 
     def at(s: pd.Series, day, lag=1):
@@ -169,6 +178,7 @@ def main():
             "oi_chg3": chg(m["oi_value"], day, 3), "oi_chg30": chg(m["oi_value"], day, 30),
             "top_ls": at(m["top_ls"], day), "acct_ls": at(m["acct_ls"], day),
             "taker_ls3": m["taker_ls"][day - pd.Timedelta(days=3):day - pd.Timedelta(days=1)].mean(),
+            "new_listings_30d": at(new30, day), "active_perps": at(active, day),
         })
     feats = pd.DataFrame(rows)
     trades = pd.concat([trades, feats], axis=1)
