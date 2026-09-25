@@ -131,6 +131,26 @@ days, stop at +30/60%. Listings before 2024-07 (220): mean −2.9% to +0.9% per 
 2024-26 memecoin/AI flood): +2.3% to +3.3% per trade in every setting. Chosen on the earlier data it would have been
 rejected; regime-dependent and exposed to squeezes, so paper-trade only if at all.
 
+**Small-capital edges.** Edges too small for funds are the natural place for a small account; tested:
+- Exchange announcements (`backend/event_lab.py`; events from the official Telegram channels @binance_announcements
+  2017 on, @upbit_news 2025-05 on, @bithumb_notice 2026-05 on; traded on the Binance perp with 1-minute bars, entry
+  60-120 s after the post, 0.7% round-trip costs + funding). Upbit listings: price is already up a median +13% before
+  a normal bot can enter; buying loses (−11% over 24h). Fading them (short, hold 24h): +7.2%/trade, 70% win, n=27, but
+  +12% in the first half of events vs +2% in the second, stops at 10/20% turn it negative, and it has to sit through
+  squeezes of up to +43%. Binance delistings, short and hold 4h: +3.6%/trade after funding, 63% win, n=67, stable
+  across halves (+3.4% / +3.8%) — the best find, but ~27 events a year and fat tails (one +180% squeeze inside 4h), so
+  sized to survive a 200% squeeze it adds only a few % a year. Binance listing fades and Bithumb listings (n=18): no
+  edge. The public Upbit notice API is Cloudflare-blocked from the research server.
+- Daily reversal / momentum in the top 50-100 coins (`backend/smallcap_lab.py`): both directions lose after
+  0.15%/side costs (turnover 56-104% a day).
+- Shorting new listings (`listing_lab.py`, above): only since 2024-07.
+The trend strategy already runs fine on €500 (positions of roughly €50-150); for a small account the deposit rate and
+the risk level move the result far more than any of these.
+
+**Final hype/attention run** (all Whale Alert history 2019 on, `*_share` measures): still nothing consistent. Share of
+attention flips sign between periods for news, Wikipedia and Telegram; whale exchange inflows and stablecoin inflows
+keep their sign but are not significant after 2024-07.
+
 **Bottom line (2026-09-25).** Nothing tested beats the live 8-coin trend strategy out of sample. Its ceiling is roughly
 2× a year at ~5% risk per trade with deep drawdowns; ~1% risk (+30%/yr, −26% drawdown) is the sane setting, 2–3% if
 the user accepts deeper drawdowns for the deposit plan.

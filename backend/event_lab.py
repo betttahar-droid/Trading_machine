@@ -31,7 +31,7 @@ import requests
 
 from backend.backtest_trend import DATA_DIR
 from backend.telegram_data import load_channel
-from backend.universe_data import usdt_perps
+from backend.universe_data import load_funding, usdt_perps
 
 CACHE = os.path.join(DATA_DIR, "event_cache")
 COST = 2 * (0.0005 + 0.003)
@@ -61,8 +61,10 @@ def korean_events(channel: str, src: str) -> List[dict]:
     out = []
     for m in load_channel(channel):
         text = m["text"].replace("\n", " ")
-        if "해제" in text or "안내 (완료)" in text:        # caution released / follow-ups
+        if src == "upbit" and not text.startswith("[거래]"):   # only trading notices, not event promos
             continue
+        if "해제" in text or "안내 (완료)" in text or "기념" in text or "이벤트" in text:
+            continue                                   # caution released, follow-ups, promotions
         if re.search(r"(디지털 자산 추가|마켓 추가|신규 상장|원화 마켓 상장)", text):
             kind, side = "list", 1
         elif re.search(r"유의 종목 지정|투자유의종목 지정|유의 촉구", text):
@@ -72,6 +74,8 @@ def korean_events(channel: str, src: str) -> List[dict]:
         else:
             continue
         for t in _tickers(text):
+            if any(e["ticker"] == t and e["kind"] == kind and m["ts"] - e["ts"] < 7 * 86400 for e in out[-50:]):
+                continue                               # same notice re-posted
             out.append({"ts": m["ts"], "src": src, "kind": kind, "side": side, "ticker": t, "text": text[:120]})
     return out
 
@@ -127,6 +131,28 @@ def trade(ev: dict, perps: set) -> Optional[dict]:
         for h in HORIZONS:
             k = k0 + lag + h - 1
             out[f"{name}_{h}"] = ev["side"] * (bars.at[k, "close"] / entry - 1) - COST if k in bars.index else np.nan
+    # Slow entry, 4h and 24h holds: funding paid/received, worst move against the trade, and stop-losses
+    entry, k_in = bars.at[k0 + 2, "open"], k0 + 2
+    months = sorted({datetime.fromtimestamp(k * 60, tz=timezone.utc).strftime("%Y-%m") for k in (k_in, k_in + 1440)})
+    fund = load_funding(sym, months)
+    for h in (240, 1440):
+        win = bars.loc[k_in:k_in + h - 1]
+        if len(win) < h * 0.9:
+            continue
+        adverse = (win["high"].max() / entry - 1) if ev["side"] < 0 else (1 - win["low"].min() / entry)
+        out[f"mae_{h}"] = adverse
+        t0, t1 = pd.Timestamp(k_in * 60, unit="s"), pd.Timestamp((k_in + h) * 60, unit="s")
+        f = fund[(fund.index > t0) & (fund.index <= t1)].sum() if len(fund) else 0.0
+        out[f"fund_{h}"] = -ev["side"] * f                    # longs pay positive funding, shorts receive it
+        out[f"slow_{h}_f"] = out[f"slow_{h}"] + out[f"fund_{h}"]
+        for stop in (0.10, 0.20):
+            hit = win["high"] >= entry * (1 + stop) if ev["side"] < 0 else win["low"] <= entry * (1 - stop)
+            if hit.any():
+                k = hit.idxmax()
+                gap = (win.at[k, "open"] / entry - 1) * -ev["side"] if ev["side"] < 0 else (1 - win.at[k, "open"] / entry)
+                out[f"slow_{h}_stop{int(stop * 100)}"] = -max(stop, gap) - COST + out[f"fund_{h}"]
+            else:
+                out[f"slow_{h}_stop{int(stop * 100)}"] = out[f"slow_{h}_f"]
     return out
 
 
@@ -144,9 +170,30 @@ def summary(df: pd.DataFrame, label: str):
         print(f"    {name:<4} mean/median (win%) after costs: " + " | ".join(cells))
 
 
+def detail(df: pd.DataFrame, label: str):
+    """Slow entry (60-120 s late), after costs: plain, with funding, with 10% / 20% stops; tails and halves."""
+    print(f"\n  {label}: n={len(df)}")
+    for h in (240, 1440):
+        cols = [(f"slow_{h}", "no funding"), (f"slow_{h}_f", "with funding"),
+                (f"slow_{h}_stop20", "20% stop"), (f"slow_{h}_stop10", "10% stop")]
+        for c, name in cols:
+            x = df[c].dropna()
+            if x.empty:
+                continue
+            first, second = x.iloc[:len(x) // 2], x.iloc[len(x) // 2:]
+            print(f"    {h:>4}m {name:<12} mean {x.mean():+6.1%} median {x.median():+6.1%} win {(x > 0).mean():4.0%} "
+                  f"worst {x.min():+7.1%} 10th pct {x.quantile(0.1):+6.1%} | first half {first.mean():+6.1%}, "
+                  f"second half {second.mean():+6.1%}")
+        mae = df[f"mae_{h}"].dropna()
+        print(f"    {h:>4}m worst move against the trade: median {mae.median():+.1%}, 90th pct {mae.quantile(0.9):+.1%}, "
+              f"max {mae.max():+.1%}")
+
+
 def main():
     perps = set(usdt_perps())
     events = binance_events() + korean_events("upbit_news", "upbit") + korean_events("bithumb_notice", "bithumb")
+    # Fading the listing pump: the same listing events traded short
+    events += [{**e, "kind": "list_fade", "side": -1} for e in events if e["kind"] == "list"]
     print(f"{len(events)} announcement events parsed", flush=True)
     with ThreadPoolExecutor(16) as ex:
         rows = [r for r in ex.map(lambda e: trade(e, perps), events) if r]
@@ -154,6 +201,13 @@ def main():
     os.makedirs(CACHE, exist_ok=True)
     df.to_csv(os.path.join(CACHE, "event_trades.csv"), index=False)
     print(f"{len(df)} events had a Binance perp already trading\n")
+    df = df.sort_values("ts")
+    print("\nDetail for the two candidates:")
+    detail(df[(df["src"] == "upbit") & (df["kind"] == "list_fade")], "Upbit listing, fade (short the pump)")
+    detail(df[(df["src"] == "binance") & (df["kind"] == "delist")], "Binance delisting, short")
+    detail(df[(df["src"] == "binance") & (df["kind"] == "list_fade")], "Binance listing, fade (short)")
+    detail(df[(df["src"] == "bithumb") & (df["kind"] == "list")], "Bithumb KRW listing, long")
+    print("\nAll event types:")
     for (src, kind), g in df.groupby(["src", "kind"]):
         summary(g, f"{src} {kind} ({'long' if g['side'].iloc[0] > 0 else 'short'})")
         if src == "binance":
