@@ -5,9 +5,12 @@ Laya reads every new headline the news engine pulls and answers yes/no questions
 can crash a coin or the whole market: hacks/exploits, exchanges or lenders halting withdrawals,
 delistings, regulator/prosecutor action, stablecoin depegs and chain outages.
 
-- Exchange failures and depegs block new trend entries on every coin.
-- Other events block the coins the headline names (Bitcoin/BTC, Solana/SOL, ...).
-- A block lasts BLOCK_HOURS from the headline's publication time. Open positions are not touched.
+- Exchange failures and depegs flag every coin.
+- Other events flag the coins the headline names (Bitcoin/BTC, Solana/SOL, ...).
+- A flag lasts BLOCK_HOURS from the headline's publication time. Open positions are not touched.
+- Runs in shadow mode (ENFORCE = False): flags are logged and shown on the scanner but do not block
+  entries, because the 2020-2024 backtest showed blocking would have cost money. Turn it on with
+  POST /api/news_guard/enforce?on=true.
 
 Every verdict is appended to data/news_guard_log.jsonl with the coins' prices at that moment, so
 the brake can be judged later on what actually followed the flagged headlines:
@@ -32,6 +35,11 @@ logger = logging.getLogger("layaquant.news_guard")
 DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data"))
 LOG_FILE = os.path.join(DATA_DIR, "news_guard_log.jsonl")
 
+# Shadow mode by default: flags are logged and shown, but entries are not blocked. On 2020-2024
+# headlines (news_guard_backtest.py) the brake would have skipped 105 of 344 trend entries, and
+# those skipped trades were better than average (+0.91R vs +0.61R): most flags were noise such as
+# bankruptcy-proceedings news, and the trend rules rarely buy during real crashes anyway.
+ENFORCE = False
 THRESHOLD = 0.70          # Laya "yes" probability needed to flag
 BLOCK_HOURS = 24.0
 MAX_AGE_HOURS = 48.0      # ignore headlines older than this (feeds re-serve old items)
@@ -96,6 +104,7 @@ def _norm(headline: str) -> str:
 class NewsGuard:
     def __init__(self, universe: Optional[List[str]] = None):
         self.universe = list(universe or DEFAULT_UNIVERSE)
+        self.enforce = ENFORCE
         self.agent = None
         self.lock = threading.Lock()
         self.seen: set = set()
@@ -233,6 +242,7 @@ class NewsGuard:
         now = time.time()
         return {
             "engine": "laya" if self.agent is not None else "keywords",
+            "enforce": self.enforce,
             "threshold": THRESHOLD,
             "block_hours": BLOCK_HOURS,
             "active_blocks": [{**b, "hours_left": round((b["until"] - now) / 3600, 1)}

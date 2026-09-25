@@ -576,6 +576,12 @@ def get_news_guard_status():
     from backend.news_guard import news_guard
     return news_guard.status()
 
+@app.post("/api/news_guard/enforce")
+def set_news_guard_enforce(on: bool = Query(...)):
+    from backend.news_guard import news_guard
+    news_guard.enforce = on
+    return {"enforce": news_guard.enforce}
+
 @app.on_event("startup")
 def startup_paper_trader():
     # Guarantee worker thread runs if positions are active or is_running was persisted

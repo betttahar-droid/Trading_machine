@@ -1484,9 +1484,10 @@ class PaperTrader:
                         pos = None
 
             sig = entry_signal(f, i, p)
-            brake = news_guard.block_reason(sym)
-            if brake and sig and pos is None and sym not in self.positions and new_bar:
-                logger.warning(f"[NEWS BRAKE] skipped {sig} {sym} breakout: {brake}")
+            flag = news_guard.block_reason(sym)
+            brake = flag if news_guard.enforce else None
+            if flag and sig and pos is None and sym not in self.positions and new_bar:
+                logger.warning(f"[NEWS BRAKE] {'skipped' if brake else 'would skip (shadow mode)'} {sig} {sym} breakout: {flag}")
             if pos is None and sym not in self.positions and new_bar and sig and not brake:
                 atr = float(f["atr"][i])
                 long = sig == "LONG"
@@ -1549,7 +1550,7 @@ class PaperTrader:
                 "score": round(max(0.0, min(100.0, 100.0 - max(0.0, dist_up) * 10.0)), 1),
                 "choice": "BUY_LONG" if (sig == "LONG" and not active) else ("SELL_SHORT" if (sig == "SHORT" and not active) else "WAIT"),
                 "news_score": 0.0,
-                "top_catalyst": (f"NEWS BRAKE: {brake}" if brake else
+                "top_catalyst": (f"NEWS {'BRAKE' if brake else 'FLAG'}: {flag}" if flag else
                                  f"{p.entry_n}-bar high ${upper:.{4 if upper < 1 else 2}f} ({dist_up:+.1f}% away)"),
                 "is_active_trade": active,
                 "status_label": "ACTIVE TREND POSITION" if active else ("NEWS BRAKE" if brake else "SCANNING"),
