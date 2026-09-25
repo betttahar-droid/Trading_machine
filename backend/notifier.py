@@ -82,10 +82,15 @@ class Notifier:
         bot = me["result"].get("username", "your bot")
         deadline = time.time() + wait_s
         offset = None
+        conflict = False
         while time.time() < deadline:
             try:
                 upd = self._call("getUpdates", token=token, timeout=10, **({"offset": offset} if offset else {}))
             except Exception:
+                time.sleep(2)
+                continue
+            if upd.get("error_code") == 409:                     # something else is reading this bot's messages
+                conflict = True
                 time.sleep(2)
                 continue
             for u in upd.get("result", []):
@@ -97,9 +102,14 @@ class Notifier:
                     self._save()
                     self.send(f"✅ Connected. Trading-plan notifications will arrive here.")
                     return {"status": "connected", "bot": bot, "chat_id": self.cfg["chat_id"]}
+        if conflict:
+            return {"status": "waiting_timeout", "bot": bot,
+                    "message": f"Token OK (@{bot}), but another program is reading this bot's messages (another "
+                               f"Connect still waiting, or another app using the same token). Close it, send @{bot} "
+                               f"any message, then press Connect again."}
         return {"status": "waiting_timeout", "bot": bot,
-                "message": f"Token OK (@{bot}), but no message arrived. Open @{bot} in Telegram, press Start or send "
-                           f"any text, then press Connect again."}
+                "message": f"Token OK (@{bot}), but no message arrived. Open @{bot} in Telegram, send it any message "
+                           f"(e.g. hi), then press Connect again."}
 
     # ---------- sending ----------
     def send(self, text: str):

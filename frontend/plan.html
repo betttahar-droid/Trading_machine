@@ -75,8 +75,8 @@
     </div>
     <ol class="text-sm text-slate-300 list-decimal ml-5 space-y-1 mb-3">
       <li>In Telegram, open <span class="font-mono text-brand-accent">@BotFather</span>, send <span class="font-mono">/newbot</span>, pick a name and a username, and copy the token it gives you.</li>
-      <li>Paste the token below and press <b>Connect</b>.</li>
-      <li>Within 90 seconds, open your new bot in Telegram and press <b>Start</b> (or send it any message).</li>
+      <li>Open your new bot in Telegram and press <b>Start</b> (or send it any message, e.g. <span class="font-mono">hi</span>).</li>
+      <li>Paste the token below and press <b>Connect</b>. Wait for "Connected" (up to 90 s).</li>
     </ol>
     <div class="flex flex-wrap gap-3 items-center">
       <input id="tgToken" type="password" placeholder="123456789:AA…" style="max-width:360px">
@@ -240,10 +240,17 @@ async function loadTelegram() {
 $('tgConnect').onclick = async () => {
   const token = $('tgToken').value.trim();
   if (!token) { $('tgMsg').textContent = 'Paste the token from @BotFather first.'; return; }
-  $('tgMsg').textContent = 'Checking the token… now open your bot in Telegram and press Start (waiting up to 90 s).';
-  const r = await post('/api/telegram/connect', {token});
-  $('tgMsg').textContent = r.status === 'connected' ? `Connected to @${r.bot}. A confirmation message was sent to your phone.` : (r.message || JSON.stringify(r));
-  if (r.status === 'connected') $('tgToken').value = '';
+  $('tgMsg').textContent = 'Checking the token… if you haven\'t yet, send your bot any message in Telegram now (waiting up to 90 s).';
+  $('tgConnect').disabled = $('tgTest').disabled = true;
+  try {
+    const r = await post('/api/telegram/connect', {token});
+    $('tgMsg').textContent = r.status === 'connected' ? `Connected to @${r.bot}. A confirmation message was sent to your phone.` : (r.message || JSON.stringify(r));
+    if (r.status === 'connected') $('tgToken').value = '';
+  } catch (e) {
+    $('tgMsg').textContent = 'Connect failed: ' + e + '. Check the window running the server for errors.';
+  } finally {
+    $('tgConnect').disabled = $('tgTest').disabled = false;
+  }
   loadTelegram();
 };
 $('tgTest').onclick = async () => { const r = await post('/api/telegram/test'); $('tgMsg').textContent = r.status === 'sent' ? 'Test message sent.' : r.message; };

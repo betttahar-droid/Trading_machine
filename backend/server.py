@@ -737,8 +737,11 @@ def telegram_settings(req: TelegramSettingsRequest):
 @app.post("/api/telegram/test")
 def telegram_test():
     from backend.notifier import notifier
+    if not notifier.status()["configured"]:
+        return {"status": "error", "message": "Not connected yet. Send your bot any message in Telegram, then press "
+                                              "Connect and wait for \"Connected\"."}
     if not notifier.ready:
-        return {"status": "error", "message": "Telegram is not connected (or notifications are off)."}
+        return {"status": "error", "message": "Notifications are switched off. Tick \"Notifications on\"."}
     s = paper_trader.get_plan_status()
     notifier.send(f"🔔 Test message. Equity {s['equity']:,.2f}, deposited {s['deposited']:,.2f}, "
                   f"{'running' if s['is_running'] else 'paused'}.")
