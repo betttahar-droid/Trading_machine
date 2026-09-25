@@ -31,11 +31,11 @@ import requests
 from backend.backtest_trend import DATA_DIR
 
 CACHE = os.path.join(DATA_DIR, "predmarket_cache")
-GAMMA = "https://gamma-api.polymarket.com/markets"
+GAMMA = "https://gamma-api.polymarket.com/markets/keyset"
 CLOB = "https://clob.polymarket.com/prices-history"
 SPREAD = 0.01          # paid on entry (buy at mid + 1c)
-MIN_VOLUME = 20_000
-HOURS = (24, 24 * 7, 24 * 30)
+MIN_VOLUME = 50_000
+HOURS = (24, 24 * 7, 24 * 30)          # buy this long before the scheduled end (12h price resolution)
 
 
 def _get(url, params, tries=5):
@@ -50,21 +50,29 @@ def _get(url, params, tries=5):
     return None
 
 
-def resolved_markets(max_pages: int = 30) -> pd.DataFrame:
+def resolved_markets(max_pages: int = 600) -> pd.DataFrame:
+    """Closed markets by volume, largest first, down to MIN_VOLUME (keyset pagination, 100 per page)."""
     os.makedirs(CACHE, exist_ok=True)
     path = os.path.join(CACHE, "markets.json")
     if os.path.exists(path) and time.time() - os.path.getmtime(path) < 7 * 86400:
         rows = json.load(open(path))
     else:
-        rows = []
+        rows, cursor = [], None
         for page in range(max_pages):
-            batch = _get(GAMMA, {"closed": "true", "limit": 500, "offset": 500 * page,
-                                 "order": "volumeNum", "ascending": "false"})
-            if not batch:
+            params = {"closed": "true", "limit": 100, "order": "volumeNum", "ascending": "false"}
+            if cursor:
+                params["after_cursor"] = cursor
+            d = _get(GAMMA, params)
+            if not d or not d.get("markets"):
                 break
-            rows += batch
-            if batch[-1].get("volumeNum", 0) < MIN_VOLUME:
+            keep = ("id", "question", "outcomes", "outcomePrices", "clobTokenIds", "volumeNum", "endDate",
+                    "closedTime", "negRisk")
+            rows += [{k: m.get(k) for k in keep} for m in d["markets"]]
+            cursor = d.get("next_cursor")
+            if not cursor or (d["markets"][-1].get("volumeNum") or 0) < MIN_VOLUME:
                 break
+            if page % 50 == 49:
+                print(f"  fetched {len(rows)} markets, volume down to ${d['markets'][-1].get('volumeNum', 0):,.0f}", flush=True)
         json.dump(rows, open(path, "w"))
     out = []
     for m in rows:
@@ -87,7 +95,7 @@ def price_history(token: str) -> Optional[pd.Series]:
     if os.path.exists(path):
         pts = json.load(open(path))
     else:
-        d = _get(CLOB, {"market": token, "interval": "max", "fidelity": 60})
+        d = _get(CLOB, {"market": token, "interval": "max", "fidelity": 720})   # 12h points (finer returns nothing)
         pts = d.get("history", []) if d else []
         json.dump(pts, open(path, "w"))
     if not pts:
