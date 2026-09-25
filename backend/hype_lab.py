@@ -197,14 +197,19 @@ def split_test(name: str, x: np.ndarray, r: np.ndarray, rng) -> str:
             f"bottom third {bot.mean():+.2f}  -> gap {gap:+.2f}, random split this large {p:.0%}")
 
 
-def main():
-    last_month = time.strftime("%Y-%m", time.gmtime(time.time() - 32 * 86_400))
+def live_trend_trades(last_month: str) -> pd.DataFrame:
+    """Every trade of the live trend strategy on the 8 coins since 2020-03: sym, entry_s (entry time), r."""
     market = load_market_bulk("4h", last_month, UNIVERSE, lambda s: available_months(s, "4h"))
     trades = []
     for sym, m in market.items():
         for t in symbol_trades(m, compute_features(m["bars"], LIVE), LIVE, _ms(WINDOW_START)):
             trades.append({"sym": sym, "entry_s": t["ts"] // 1000 + H4, "r": t["r"]})
-    trades = pd.DataFrame(trades).sort_values("entry_s").reset_index(drop=True)
+    return pd.DataFrame(trades).sort_values("entry_s").reset_index(drop=True)
+
+
+def main():
+    last_month = time.strftime("%Y-%m", time.gmtime(time.time() - 32 * 86_400))
+    trades = live_trend_trades(last_month)
     print(f"{len(trades)} trend trades on the 8 coins", flush=True)
 
     heads = all_headlines()
