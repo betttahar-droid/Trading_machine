@@ -48,6 +48,14 @@ and 20× gross, liquidation modelled, a fresh $500 account started every 2 weeks
 - Out of sample (2024-07 → now) no risk level reached $10k; the best was 5% risk → $1,915 with an −81% drawdown on the way.
 - Growth peaks around 5–10% risk. Above that the median result falls and the chance of being wiped out rises quickly.
 
+**Does Laya improve entries? (`python -m backend.laya_filter_test`)** No. On all 452 trend entries since 2020-04:
+- The prompt `server.py` sends today (RSI/SMA criteria) says "buy" on only 4 breakouts. Used as a gate it would skip
+  trades worth +268R and keep 4 losers (−1.8R), because its criteria call RSI > 65 "sell" and breakouts have high RSI.
+- A trend-specific prompt ("will this breakout continue?") has zero correlation with the outcome (+0.005). Filtering on it
+  did no better than skipping the same number of trades at random.
+- Laya is a general text classifier (ModernBERT, trained on email triage / intent / NLI), not a market model. In TREND mode
+  the paper trader does not call it at all; in SCALPER mode it is only the fallback when `neural_dream` fails.
+
 ---
 
 ## 1. Executive Summary & Purpose
