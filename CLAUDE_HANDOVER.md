@@ -56,6 +56,34 @@ and 20× gross, liquidation modelled, a fresh $500 account started every 2 weeks
 - Laya is a general text classifier (ModernBERT, trained on email triage / intent / NLI), not a market model. In TREND mode
   the paper trader does not call it at all; in SCALPER mode it is only the fallback when `neural_dream` fails.
 
+**What the goal needs.** At the growth-optimal (Kelly) leverage, a strategy with Sharpe S grows the median account by
+about exp(S²/2) per year, and at full Kelly there is a 50% chance of halving along the way. 20× in 12 months needs S ≈ 2.5,
+in 6 months S ≈ 3.5. The live trend strategy (S ≈ 1.2 out of sample) tops out near 2× a year, which matches the growth
+study (best out-of-sample result: 5% risk, +86%/yr, −81% drawdown).
+
+**News safety brake (`backend/news_guard.py`), shadow mode.** Laya answers yes/no questions per headline (hack, exchange
+withdrawal halt/insolvency, delisting, regulator action, depeg, outage); market-wide and outage flags also need a keyword.
+Correct on 26/26 hand-labelled headlines, but replayed on 2020-2024 news (`backend/news_guard_backtest.py`, 229k-headline
+CoinDesk/CryptoCompare archive) it would have skipped 105 of 344 trend entries whose average was *better* than the rest
+(+0.91R vs +0.61R): real news is full of "Celsius exits bankruptcy" / "Tether freezes wallets" noise, and breakouts rarely
+happen during real crashes (there was no entry during FTX). So it only logs and shows NEWS FLAG on the scanner;
+`POST /api/news_guard/enforce?on=true` makes it block entries. `python -m backend.news_guard --report` judges the live log.
+
+**Other strategies (`backend/strategy_lab.py`, point-in-time universe from `backend/universe_data.py`, delisted coins
+included).** Out-of-sample (2024-07 → now) Sharpe; parameters chosen on 2020-06 → 2024-06 only:
+
+| Strategy | In-sample Sharpe | Out-of-sample Sharpe |
+|---|---|---|
+| Trend, live 8 coins (baseline) | 1.68 | **1.17** |
+| Trend, top-30 by volume | 0.88 | 0.54 (coins enter the top 30 during pumps, breakouts buy the top) |
+| Cross-sectional momentum, best in-sample setting | 1.11 | −0.02 |
+| Funding carry, best in-sample setting | 4.21 | −0.52 (funding premia compressed since 2024) |
+| Equal-risk combination of the three above | 3.42 | −0.33 (−28%/yr, −77% drawdown) |
+| Trend ensemble (9 lookbacks, vol-sized, Zarattini 2025), 8 coins | 1.74 | 0.42 |
+| Same, monthly top 20 | 0.68 | 0.59 |
+
+The combination row is the trap to avoid: in 2024 it looked like the Sharpe-3 system the goal needs, then lost 77%.
+
 ---
 
 ## 1. Executive Summary & Purpose

@@ -26,7 +26,7 @@ from typing import Dict, List
 import numpy as np
 import pandas as pd
 
-from backend.backtest_trend import DATA_DIR
+from backend.backtest_trend import DATA_DIR, UNIVERSE
 from backend.growth_study import LIVE, load_market_bulk, symbol_trades
 from backend.trend_strategy import compute_features
 from backend.universe_data import available_months, daily_panel, top_by_volume
@@ -90,10 +90,11 @@ def build_dataset(last_month: str) -> pd.DataFrame:
     return df
 
 
-def as_text(row) -> str:
+def as_text(row, with_symbol: bool = True) -> str:
     def pct(x):
         return "unknown" if pd.isna(x) else f"{x:+.1%}"
-    return (f"Instrument: {row.sym}. Price closed {row.brk_atr:.2f} ATR above its 20-day high. "
+    return ((f"Instrument: {row.sym}. " if with_symbol else "") +
+            f"Price closed {row.brk_atr:.2f} ATR above its 20-day high. "
             f"Volatility {row.atr_pct:.2%} per 4h bar. Return over 3 days {pct(row.r20)}, 10 days {pct(row.r60)}, "
             f"20 days {pct(row.r120)}, 60 days {pct(row.r360)}. Volume {row.vol_ratio:.1f}x its recent average. "
             f"Distance from 33-day average {pct(row.sma200_dist)}. Funding over 3 days {row.fund_3d:+.3%}. "
@@ -101,16 +102,17 @@ def as_text(row) -> str:
             f"Share of coins above their 20-day average {row.breadth:.0%}. Liquidity rank {row.vol_rank:.0f}.")
 
 
-def laya_embeddings(df: pd.DataFrame) -> np.ndarray:
+def laya_embeddings(df: pd.DataFrame, with_symbol: bool = True) -> np.ndarray:
     os.makedirs(CACHE, exist_ok=True)
-    path = os.path.join(CACHE, f"laya_emb_{len(df)}_{int(df['ts'].iloc[-1])}.npy")
+    tag = "" if with_symbol else "_nosym"
+    path = os.path.join(CACHE, f"laya_emb{tag}_{len(df)}_{int(df['ts'].iloc[-1])}.npy")
     if os.path.exists(path):
         return np.load(path)
     import laya
     import torch
     agent = laya.load("convaiinnovations/laya", device="cpu")
     embed = laya.embed_fn_from_agent(agent, max_length=256, batch_size=16)
-    texts = [as_text(r) for r in df.itertuples()]
+    texts = [as_text(r, with_symbol) for r in df.itertuples()]
     t0, out = time.time(), []
     with torch.no_grad():
         for k in range(0, len(texts), 64):
@@ -139,9 +141,9 @@ def walk_forward(df: pd.DataFrame, X: np.ndarray, make_model) -> np.ndarray:
     return pred
 
 
-def report(name: str, df: pd.DataFrame, pred: np.ndarray, rng):
+def report(name: str, df: pd.DataFrame, pred: np.ndarray, rng, subset=None):
     from sklearn.metrics import roc_auc_score
-    ok = ~np.isnan(pred)
+    ok = ~np.isnan(pred) if subset is None else ~np.isnan(pred) & subset
     r, p = df["r"].to_numpy()[ok], pred[ok]
     keep = p > 0
     auc = roc_auc_score(r > 0, p)
@@ -152,7 +154,7 @@ def report(name: str, df: pd.DataFrame, pred: np.ndarray, rng):
     for lbl, m in (("2021-24H1", ~late), ("2024H2+", late)):
         k = keep & m
         parts.append(f"{lbl}: keep {k.sum()}/{m.sum()} E[R] {r[k].mean():+.3f} vs drop {r[m & ~keep].mean():+.3f}")
-    print(f"  {name:<6} AUC {auc:.3f} | kept E[R] {r[keep].mean():+.3f} vs dropped {r[~keep].mean():+.3f} "
+    print(f"  {name:<14} AUC {auc:.3f} | kept E[R] {r[keep].mean():+.3f} vs dropped {r[~keep].mean():+.3f} "
           f"(all {r.mean():+.3f}) | random does as well {pval:.0%} | " + " | ".join(parts))
 
 
@@ -180,8 +182,22 @@ def main():
     report("LOGIT", df, logit, rng)
 
     emb = laya_embeddings(df)
-    lay = walk_forward(df, emb, lambda: make_pipeline(StandardScaler(), LogisticRegression(C=0.01, max_iter=3000)))
+    laya_model = lambda: make_pipeline(StandardScaler(), LogisticRegression(C=0.01, max_iter=3000))
+    lay = walk_forward(df, emb, laya_model)
     report("LAYA", df, lay, rng)
+
+    # Is LAYA just recognising the coin? Same model without the symbol in the text, vs. simple rules.
+    lay_ns = walk_forward(df, laya_embeddings(df, with_symbol=False), laya_model)
+    report("LAYA no symbol", df, lay_ns, rng)
+    ok = ~np.isnan(lay)
+    rules = {"top-10 liquidity": df["vol_rank"] <= 10, "listed >1 year": df["age_bars"] >= 6 * 365,
+             "8 live coins": df["sym"].isin(UNIVERSE)}
+    for name, keep in rules.items():
+        report(name, df, np.where(keep, 1.0, -1.0) + np.where(ok, 0.0, np.nan), rng)
+    print("\nOn the 8 live coins only (models trained on all top-30 trades):")
+    live = df["sym"].isin(UNIVERSE).to_numpy()
+    for name, pred in (("GBM", gbm), ("LAYA", lay), ("LAYA no symbol", lay_ns)):
+        report(name, df, pred, rng, subset=live)
 
     imp = LGBMClassifier(n_estimators=300, learning_rate=0.02, num_leaves=8, min_child_samples=40,
                          verbose=-1).fit(X, df["r"] > 0).feature_importances_
