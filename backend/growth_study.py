@@ -110,7 +110,7 @@ def load_market_bulk(interval: str, last_month: str) -> Dict[str, dict]:
                 if ts not in seen:
                     seen.add(ts)
                     bars.append({"timestamp": ts, "open": float(r[1]), "high": float(r[2]),
-                                 "low": float(r[3]), "close": float(r[4])})
+                                 "low": float(r[3]), "close": float(r[4]), "volume": float(r[5])})
         bars.sort(key=lambda b: b["timestamp"])
         if len(bars) < 150:
             continue
