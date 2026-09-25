@@ -32,6 +32,22 @@ Validation (`python -m backend.backtest_trend`, real klines + real funding histo
 - Expect long flat/down stretches (2022: −2.5%; 2025 −9% for the daily variant). Win rate is ~35–45%; profits come from a few large trends.
 - 2.2 years OOS is still a small sample. Paper-trade it before risking money; do not raise risk above 1% on this evidence.
 
+**Can it do €500 → €10k in months? (`python -m backend.growth_study`)** Same rules, leverage caps raised to 10×/position
+and 20× gross, liquidation modelled, a fresh $500 account started every 2 weeks from 2020-03 to 2025-08 (144 overlapping
+12-month windows):
+
+| Risk/trade | $10k within 6 mo | within 12 mo | Wiped out | Median after 12 mo |
+|---|---|---|---|---|
+| 1% (live) | 0% | 0% | 0% | $681 |
+| 5% | 6% | 17% | 0% | $1,149 |
+| 10% | 11% | 24% | 3% | $1,371 |
+| 15% | 17% | 31% | 35% | $598 |
+| 20% | 19% | 26% | 58% | $192 |
+
+- Nearly all windows that reached $10k started in 2020 (the 2020-21 bull run); no window starting in 2022 or 2025 got there at any risk level.
+- Out of sample (2024-07 → now) no risk level reached $10k; the best was 5% risk → $1,915 with an −81% drawdown on the way.
+- Growth peaks around 5–10% risk. Above that the median result falls and the chance of being wiped out rises quickly.
+
 ---
 
 ## 1. Executive Summary & Purpose
