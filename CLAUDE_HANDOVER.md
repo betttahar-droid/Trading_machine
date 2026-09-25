@@ -112,6 +112,20 @@ after 2024-07 (rising attention better, p<0.1%) but was the other way round in 2
 sign between periods would hurt as filters. Public Telegram channels can be read with history via t.me/s pages (no
 login); X needs a paid API and Reddit's API refuses these requests.
 
+**Free insight sources (`backend/insight_lab.py`).** Binance futures metrics (open interest, top-trader / all-account
+long-short ratios, taker buy/sell ratio; data.binance.vision daily files), Fear & Greed (alternative.me), stablecoin
+supply (DefiLlama), Deribit DVOL and the Coinbase premium, each taken the day before every trend entry. Long/short
+ratios and 30-day OI change flip sign between periods. Fear & Greed, taker ratio, DVOL, Coinbase premium and stablecoin
+growth keep their sign but are only significant in one period each. A blend chosen on 2020-03 .. 2024-06 data only
+(`--composite`) gave Sharpe 1.23 vs 1.17 unfiltered after 2024-07, inside the 1.01–1.23 range of skipping the same share
+of signals at random: a hint, not an edge. Not used live.
+
+**Attention dilution.** The number of active Binance perps (tokens competing for the same attention and money) sorts
+trend outcomes the same way in both periods (fewer perps → better trades), but it only rises, so it is a time trend,
+not a filter. It is consistent with the edge shrinking as the market fills up: +0.68R per trade before 2024-07,
++0.43R after. Expect somewhat less than the backtest. Attention measures in `hype_lab.py` also come as shares of
+attention across the 8 coins (`*_share`), so a market-wide frenzy is not read as coin-specific hype.
+
 **Shorting new listings (`backend/listing_lab.py`).** Short every new USDT perp 1–7 days after listing, hold 14–30
 days, stop at +30/60%. Listings before 2024-07 (220): mean −2.9% to +0.9% per trade, no edge. Listings since (~550, the
 2024-26 memecoin/AI flood): +2.3% to +3.3% per trade in every setting. Chosen on the earlier data it would have been
