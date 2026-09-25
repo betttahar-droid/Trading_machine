@@ -112,6 +112,11 @@ after 2024-07 (rising attention better, p<0.1%) but was the other way round in 2
 sign between periods would hurt as filters. Public Telegram channels can be read with history via t.me/s pages (no
 login); X needs a paid API and Reddit's API refuses these requests.
 
+**Shorting new listings (`backend/listing_lab.py`).** Short every new USDT perp 1–7 days after listing, hold 14–30
+days, stop at +30/60%. Listings before 2024-07 (220): mean −2.9% to +0.9% per trade, no edge. Listings since (~550, the
+2024-26 memecoin/AI flood): +2.3% to +3.3% per trade in every setting. Chosen on the earlier data it would have been
+rejected; regime-dependent and exposed to squeezes, so paper-trade only if at all.
+
 **Bottom line (2026-09-25).** Nothing tested beats the live 8-coin trend strategy out of sample. Its ceiling is roughly
 2× a year at ~5% risk per trade with deep drawdowns; ~1% risk (+30%/yr, −26% drawdown) is the sane setting, 2–3% if
 the user accepts deeper drawdowns for the deposit plan.
