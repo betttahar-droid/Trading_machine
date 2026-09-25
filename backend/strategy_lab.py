@@ -20,6 +20,7 @@ Parameters for C and D are picked on 2020-06 .. 2024-06 only; 2024-07 .. now is 
 """
 
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from typing import Dict, List, Tuple
 
@@ -27,7 +28,7 @@ import numpy as np
 import pandas as pd
 
 from backend.backtest_trend import SPLIT, UNIVERSE
-from backend.growth_study import LIVE, load_market_bulk, run_account
+from backend.growth_study import LIVE, _bulk_csv, load_market_bulk, run_account
 from backend.trend_strategy import compute_features
 from backend.universe_data import available_months, daily_panel, load_funding, top_by_volume
 
@@ -163,11 +164,15 @@ def main():
     ever = [s for s in member.columns if member[s].any()]
     print(f"{close.shape[1]} perps, {len(ever)} ever in the top {TOP_N} ({time.time() - t0:.0f}s)", flush=True)
 
-    fund = {}
-    for s in ever:
+    def daily_funding(s):
         f = load_funding(s, available_months(s, "1d"))
-        fund[s] = f.resample("1D").sum() if len(f) else pd.Series(dtype=float)
+        return f.resample("1D").sum() if len(f) else pd.Series(dtype=float)
+    with ThreadPoolExecutor(24) as ex:
+        fund = dict(zip(ever, ex.map(daily_funding, ever)))
     funding = pd.DataFrame(fund).reindex(close.index).fillna(0.0)
+    jobs = [(s, m) for s in ever for m in available_months(s, "4h") if m <= last_month]
+    with ThreadPoolExecutor(24) as ex:          # warm the 4h cache in parallel across symbols
+        list(ex.map(lambda sm: _bulk_csv("klines", sm[0], sm[1], "4h"), jobs))
     close_n, member_n = close[ever], member[ever]
     print(f"funding loaded ({time.time() - t0:.0f}s)", flush=True)
 
