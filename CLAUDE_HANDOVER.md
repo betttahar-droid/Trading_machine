@@ -84,6 +84,18 @@ included).** Out-of-sample (2024-07 → now) Sharpe; parameters chosen on 2020-0
 
 The combination row is the trap to avoid: in 2024 it looked like the Sharpe-3 system the goal needs, then lost 77%.
 
+**Trained entry filters (`backend/ml_lab.py`).** 1,724 trend trades on the top-30 universe, models retrained each year on
+trades that had already closed. LightGBM (AUC 0.49) and logistic regression (0.50) found nothing. Laya's frozen encoder
+embeddings of the features as text + a logistic head looked real at trade level (kept +0.29R vs dropped +0.01R; random
+does as well 1%; stable across regularisation; not coin identity). But on the live 8-coin strategy with every breakout
+signal scored (`--portfolio`, 42% of signals skipped) it is no better than skipping at random: Sharpe 2021-24H1 1.76 vs
+1.71 unfiltered, 2024H2+ 1.09 vs 1.17, random skips 0.95–1.19. A skipped breakout usually re-triggers on the next bar,
+so the filter mostly delays entries. A full fine-tune of the 421M-parameter model on ~1.7k trades would overfit; not
+worth doing. No filter is used live.
+
+**Bottom line (2026-09-25).** Nothing tested beats the live 8-coin trend strategy out of sample. Its ceiling is roughly
+2× a year at ~5% risk per trade with deep drawdowns; ~1% risk (+30%/yr, −26% drawdown) is the sane setting.
+
 ---
 
 ## 1. Executive Summary & Purpose
