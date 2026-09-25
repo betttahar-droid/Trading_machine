@@ -208,8 +208,8 @@ class ResearchEngine:
         """
         px = max(1.0, market_state.get("price", 65000.0))
         rsi = market_state.get("rsi", 50.0)
-        sma_fast = market_state.get("sma_fast", px)
-        sma_slow = market_state.get("sma_slow", px)
+        sma_fast = market_state.get("sma_fast") or px     # 0/None before the first price arrives
+        sma_slow = market_state.get("sma_slow") or px
         vol_spike = market_state.get("volume_spike", 1.0)
         cvd = market_state.get("cvd_delta", 0.0)
         news_score = news_state.get("score", 0.0)
