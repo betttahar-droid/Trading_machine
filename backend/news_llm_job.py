@@ -27,6 +27,9 @@ TOKEN = os.environ.get("JOB_TOKEN", "")
 MODELS = [("Qwen/Qwen2.5-7B-Instruct", "qwen7b"),
           ("Qwen/Qwen2.5-32B-Instruct-AWQ", "qwen32b"),
           ("Qwen/Qwen2.5-72B-Instruct-AWQ", "qwen72b")]
+SCRIPT = os.environ.get("JOB_SCRIPT", "backend/news_llm_score.py")   # scorer: <input> <model> <name>
+PREFIX = os.environ.get("JOB_PREFIX", "scores_")                      # the scorer writes <PREFIX><name>.csv
+SCRAPE = os.environ.get("JOB_SCRAPE", "1") == "1"                     # scrape WatcherGuru if nothing is uploaded
 if os.environ.get("JOB_MODELS"):                       # "repo:name,repo:name"
     MODELS = [tuple(m.split(":")) for m in os.environ["JOB_MODELS"].split(",")]
 status = []
@@ -96,9 +99,12 @@ def main():
     log("http server on 8080")
     threading.Thread(target=download_all, daemon=True).start()
     posts = os.path.join(WORK, "posts.jsonl")
-    deadline = time.time() + 240
+    deadline = time.time() + (240 if SCRAPE else 1800)
     while not os.path.exists(posts) and time.time() < deadline:
         time.sleep(5)
+    if not os.path.exists(posts) and not SCRAPE:
+        log("no input received")
+        return
     if not os.path.exists(posts):
         try:
             scrape_posts()
@@ -113,9 +119,9 @@ def main():
         if not downloaded[name]:
             continue
         t0 = time.time()
-        r = subprocess.run([sys.executable, os.path.join(REPO, "backend", "news_llm_score.py"), posts, repo_id, name],
+        r = subprocess.run([sys.executable, os.path.join(REPO, SCRIPT), posts, repo_id, name],
                            cwd=WORK, capture_output=True, text=True)
-        out = os.path.join(WORK, f"scores_{name}.csv")
+        out = os.path.join(WORK, f"{PREFIX}{name}.csv")
         if r.returncode != 0 or not os.path.exists(out):
             log(f"scoring failed {name}: {r.stderr[-1500:]}")
             continue
