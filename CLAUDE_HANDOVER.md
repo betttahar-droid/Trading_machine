@@ -351,6 +351,24 @@ user is a pharmacist: a domain edge plus a small local model to read announcemen
   - Long portfolio hedged with XBI: +11% then +26% a year, max DD −86% / −71%.
   - Survivorship (dead companies missing) flatters it. Not usable.
 
+**FDA decision-date run-up (`backend/biotech_pdufa_lab.py`).**
+- **Setup.** PDUFA dates were read from 8-K exhibits (680 company/date pairs; 51% tradable, i.e. priced and public
+  40+ trading days ahead). Rule: buy 40 trading days before, sell the day before, vs XBI.
+- **The run-up is not specific.**
+  - +4.4% (t 1.5) / +4.8% (t 2.2), net +3.9% / +4.3% (2015–21 / 2022+).
+  - The same stocks' control window was +3.7% / +3.9%, so only about +1% is specific to the run-up; the rest is
+    survivorship.
+  - Portfolio: −1%/yr (max DD −78%) then +18%/yr (−61%).
+- **Decision day itself: −5.4% / −4.6% on average (t −3.7 / −3.5).** Holding through an FDA decision loses on average.
+
+**Insider buying in biotech (`backend/biotech_insider_lab.py`).**
+- **Setup.** SEC Insider Transactions Data Sets 2015–2026, restricted to the ~900 drug / biotech CIKs from the labs
+  above. Signal: officer or director open-market purchases ≥ $10k; 4,947 signals, 53% with prices. Hold 60 days vs XBI.
+- **Result.**
+  - 2015–21: +3.1% (t 2.3), but the control was +3.2%. Cluster buys +5.3% (t 2.0).
+  - 2022+: −0.6%, cluster −1.6%.
+  - Portfolio: +13%/yr (max DD −26%) then −5%/yr. Decayed, and not insider-specific.
+
 **Bottom line (2026-09-25).** Nothing tested beats the live 8-coin trend strategy out of sample. Its ceiling is roughly
 2× a year at ~5% risk per trade with deep drawdowns; ~1% risk (+30%/yr, −26% drawdown) is the sane setting, 2–3% if
 the user accepts deeper drawdowns for the deposit plan.
