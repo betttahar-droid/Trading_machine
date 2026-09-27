@@ -401,6 +401,27 @@ level-2 odds to 68%. But the TradFi book runs at about 1.4× total equity at lev
 margin or futures rates it is the same as perps: Sharpe 1.71–1.75, odds 58–59%. Perps are fine and the only option
 for small accounts.
 
+**Limit orders for the trend strategy (`backend/maker_lab.py`).**
+- **Setup.** Entries and channel exits as limit orders at the signal bar's close (maker 0.02%, no slippage), resting
+  one 4h bar, then market; stops stay market. The taker version reproduces the live results exactly.
+- **Result.** All 439 entries filled at the limit. Fees −28%. +0.7–0.9%/yr (52.6→53.3% in-sample, 29.6→30.5%
+  out-of-sample), Sharpe +0.02.
+- Worth building into the live bot when real orders are added; not a breakthrough.
+
+**Small LLMs reading financial statements (`backend/fin_statement_lab.py`, `fin_statement_score.py`).** After Kim,
+Muhn & Nikolaev 2024.
+- **Setup.** SEC Financial Statement Data Sets (Q1+Q2 of 2016–2026): 55,815 10-Ks. Target: next year's diluted EPS
+  higher than this year's. 27,069 firm-years with an outcome.
+- **Baseline.** Logistic regression on standard ratios, trained FY2016–21, tested FY2022–24 (10,472): AUC 0.596,
+  accuracy 56.6% (base rate 52.9%).
+- **Models.** Qwen2.5-3B-AWQ and Phi-3.5-mini (fit an RTX 3050), zero-shot on anonymised two-year tables, letter
+  log-probabilities.
+- **Result: worse than random.**
+  - Qwen2.5-3B: AUC 0.457, accuracy 46.1%. Phi-3.5-mini: AUC 0.453, accuracy 45.4%.
+  - Both say "lower" about 80% of the time.
+  - Added to the baseline: +0.001 AUC (95% −0.001 .. +0.002).
+- The published result needs a GPT-4-class model with step-by-step reasoning. Stopped at stage 2, no returns test.
+
 **Bottom line (2026-09-25).** Nothing tested beats the live 8-coin trend strategy out of sample. Its ceiling is roughly
 2× a year at ~5% risk per trade with deep drawdowns; ~1% risk (+30%/yr, −26% drawdown) is the sane setting, 2–3% if
 the user accepts deeper drawdowns for the deposit plan.
