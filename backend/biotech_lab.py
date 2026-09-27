@@ -317,8 +317,38 @@ def evaluate(models):
                       f"{_t(-sp.loc[sp.evidence == 'weak', 'post60'] - cost)}")
 
 
+def portfolio(model: str, borrow: float = 0.15, cost: float = 0.005):
+    """Calendar-time version of 'short small-firm positive readouts for 60 days, hedged with XBI': equal weight
+    across open positions, round-trip costs and a yearly borrow fee on the short."""
+    p = pd.read_pickle(os.path.join(DATA, "prices.pkl"))
+    close = p["close"]
+    xbi = close["XBI"].dropna()
+    cal, rx = xbi.index, xbi.pct_change()
+    ev = returns(events(model))
+    ev = ev[ev.has_price]
+    cut = ev.loc[ev.file_date < "2022-01-01", "dollar_vol"].median()
+    sel = ev[(ev.outcome == "positive") & (ev.dollar_vol < cut)]
+    legs = []
+    for r in sel.itertuples():
+        i0 = cal.searchsorted(r.file_date)
+        seg = slice(i0 + 2, i0 + 62)
+        legs.append(-(close[r.ticker].reindex(cal).pct_change().iloc[seg] - rx.iloc[seg]).fillna(0.0))
+    pos = pd.concat(legs, axis=1)
+    n = pos.notna().sum(axis=1).reindex(cal).fillna(0)
+    port = (pos.sum(axis=1).reindex(cal).fillna(0) / n.replace(0, np.nan)).fillna(0.0)
+    port -= (cost / 60 + borrow / 252) * (n > 0)
+    for lab, part in (("2015-21", port[:"2021-12-31"]), ("2022+", port["2022-01-01":])):
+        eq = (1 + part).cumprod()
+        print(f"  {model} {lab}: {(eq.iloc[-1] ** (252 / len(part)) - 1):+.1%}/yr, Sharpe "
+              f"{part.mean() / part.std() * np.sqrt(252):+.2f}, max DD {(eq / eq.cummax() - 1).min():+.0%}")
+
+
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "evaluate"
+    if cmd == "portfolio":
+        for m in sys.argv[2:] or ["keywords"]:
+            portfolio(m)
+        sys.exit()
     if cmd == "collect":
         collect()
     elif cmd == "prices":

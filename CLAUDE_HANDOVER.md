@@ -297,6 +297,44 @@ Prediction markets were researched and dropped at the user's request (`backend/p
   is above its in-sample median did worse than always selling.
 - Not pursued. The premium has been competed away for small traders.
 
+**Drug-trial results and biotech stocks (`backend/biotech_lab.py`, `biotech_score.py`, 2026-09-27).** Chosen because the
+user is a pharmacist: a domain edge plus a small local model to read announcements.
+
+- **Data.**
+  - SEC EDGAR full-text search: 8-Ks from SIC 2833–2836 / 8731 mentioning "topline results/data", "met (its/the)
+    primary endpoint", "did not meet …" or "primary efficacy endpoint", 2015-01 .. 2026-09.
+  - The SEC requires a contact in the User-Agent; the user's email is used with their consent.
+  - 14,654 filings from 832 companies, 7,748 after dropping earnings releases.
+  - Yahoo prices exist for about 55%. Delisted, merged or renamed companies are missing, and the bias direction is
+    unknown.
+  - Returns are abnormal vs XBI. Entry at the close of the day after the filing; hold 20 / 60 trading days.
+- **Classification.**
+  - A keyword baseline.
+  - Qwen2.5-3B-Instruct-AWQ (fits the user's RTX 3050 4 GB) on a rented GPU. It answered outcome, phase and evidence
+    strength ("strong / moderate / weak or spun") from letter log-probabilities.
+  - A Phi-3.5-mini run was stopped to save money once the result was clear.
+- **Rules fixed in advance: all fail.**
+  - Drift in the result's direction: long positive / short negative, 60 days. −1.7% / −5.5% (keywords) and
+    −2.4% / −3.3% (Qwen) per trade, 2015–21 / 2022+.
+  - The paper's size effect: short large-firm failures, buy small-firm failures. About 0.
+  - Short small-firm positives the model rates weak or spun: +4.3% (t 1.1) / +7.0% (t 1.5). No better than shorting
+    every small-firm positive; "strong" and "weak" ratings drift the same.
+- **The model reads data quality like the market does.** Small-firm positives rated "strong" jumped +20–23% on the
+  news; those rated "weak" moved about 0.
+- **Found by slicing.** Small-firm positive readouts lag XBI over the next 60 days.
+  - Keywords: −5.4% (t −1.5) then −15.1% (t −3.5).
+  - Qwen: −3.7% (t −1.1) then −6.7% (t −2.3).
+  - The same stocks did not lag in a window months earlier (+2% / +8%).
+  - Not explained by share offerings filed within 10 days (424B). It was worse without one.
+  - The "lukewarm first reaction" variant does not hold on Qwen's events in 2015–21.
+- **As a portfolio it is untradable.** Calendar-time short with an XBI hedge, 0.5% costs and 15%/yr borrow:
+  - Keywords: −20%/yr (max DD −89%) in 2015–21, +40%/yr (max DD −64%) in 2022+.
+  - Qwen: −12%/yr (−80%) then +6%/yr (−58%).
+  - Squeezes in small biotechs dominate.
+- **Usable only as a warning.** Don't chase small biotechs after "positive" topline news; on average they lag the
+  sector for the next three months.
+- Total Vast.ai spend in this session: about $1.90.
+
 **Bottom line (2026-09-25).** Nothing tested beats the live 8-coin trend strategy out of sample. Its ceiling is roughly
 2× a year at ~5% risk per trade with deep drawdowns; ~1% risk (+30%/yr, −26% drawdown) is the sane setting, 2–3% if
 the user accepts deeper drawdowns for the deposit plan.
