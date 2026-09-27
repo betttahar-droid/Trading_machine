@@ -335,6 +335,22 @@ user is a pharmacist: a domain edge plus a small local model to read announcemen
   sector for the next three months.
 - Total Vast.ai spend in this session: about $1.90.
 
+**Buying at the start of a breakthrough (`backend/biotech_start_lab.py`).**
+- **Setup.** 8-Ks announcing FDA designations (Breakthrough Therapy, Fast Track, Orphan, Priority Review, Rare
+  Pediatric, RMAT) or research starts (IND clearance, first patient dosed, Phase 3 start), 2015-01 .. now.
+  - The event must be in the headline or lede.
+  - 1,320 events, 62% with prices.
+  - Returns are XBI-adjusted from the day after the filing, compared with the same stocks' abnormal return in an
+    earlier window.
+- **Main hypothesis fails.** Breakthrough Therapy: +11–12% on the announcement, then −10% (t −1.3) / −0.6% over 60
+  days (2015–21 / 2022+).
+- The other designations show no consistent drift; Priority Review is −5% / −8% ("sell the news").
+- **Research starts are a lottery.**
+  - IND clearance: +25% / +8%. First patient dosed: +5% / +19% (t ≤ 1.4).
+  - Median −4% / −10%; without the best 3 events per period, about 0%. The best 3 were +143% to +606%.
+  - Long portfolio hedged with XBI: +11% then +26% a year, max DD −86% / −71%.
+  - Survivorship (dead companies missing) flatters it. Not usable.
+
 **Bottom line (2026-09-25).** Nothing tested beats the live 8-coin trend strategy out of sample. Its ceiling is roughly
 2× a year at ~5% risk per trade with deep drawdowns; ~1% risk (+30%/yr, −26% drawdown) is the sane setting, 2–3% if
 the user accepts deeper drawdowns for the deposit plan.
