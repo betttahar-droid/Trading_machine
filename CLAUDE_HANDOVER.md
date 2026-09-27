@@ -457,6 +457,27 @@ Bybit blocks the server's region.
 - **Purpose.** Out-of-sample evidence for the supply-jump effect. Tested with synthetic snapshots and a live server
   smoke test.
 
+**Stock / index perps outside US hours (`backend/tradfi_hours_lab.py`).** Binance's 2026 stock perps (SPY, QQQ, IWM
+and 14 single stocks), 5-minute klines, 2,216 symbol-days.
+- **At the open the perp matches the real gap.** Correlation +1.00, mean error +0.015%.
+- **The rule fixed in advance fails.** Fading closed-hours moves above 1 sd, held to 11:30: −0.53% per trade
+  (t −4.7), in both halves, weekends and weeknights (single stocks −0.62%; index perps about 0).
+- **Following the move works only in the first five minutes.**
+  - Enter 09:30: +0.42% (t 3.3).
+  - Enter 09:35: +0.10% (t 0.8; +0.27% t 1.95 clustered by day).
+  - Enter 09:40: 0.00%.
+  - It is the perp catching up with the real opening auction, a speed game. After that, up-gaps drift up and
+    down-gaps reverse (2026 market drift).
+- Not tradable for a retail bot.
+
+**Alt-season entry filter (`backend/alt_season_lab.py`).** Alt entries only while the 7-alt equal-weight index
+priced in BTC is above its 30-day mean (on 45% of the time).
+- 2020–24: 52.6% → 34.7%/yr, Sharpe 1.68 → 1.39.
+- 2024-07+: 29.6% → 34.5%, Sharpe 1.17 → 1.36, DD −26% → −19%.
+- Regime-dependent, so rejected by the in-sample rule.
+
+**Bitcoin ETF flows:** blocked. Farside is behind a Cloudflare challenge and the alternatives are paid.
+
 **Bottom line (2026-09-25).** Nothing tested beats the live 8-coin trend strategy out of sample. Its ceiling is roughly
 2× a year at ~5% risk per trade with deep drawdowns; ~1% risk (+30%/yr, −26% drawdown) is the sane setting, 2–3% if
 the user accepts deeper drawdowns for the deposit plan.
