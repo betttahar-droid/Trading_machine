@@ -140,6 +140,17 @@
   </section>
 
   <section class="card p-4 overflow-x-auto">
+    <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+      <h2 class="text-sm font-semibold text-white">Unlock watch (research, paper only)</h2>
+      <span id="uwScore" class="text-xs text-slate-400"></span>
+    </div>
+    <p class="text-xs text-slate-500 mb-2">Once a day: coins whose circulating supply jumped 5%+ (new tokens entering the market) get a 14-day paper hedged short (short the coin, long the market basket). Fresh evidence for an idea that looked promising but unproven in testing. No real trades.</p>
+    <div class="max-h-72 overflow-y-auto">
+      <table class="w-full"><thead><tr><th>Date</th><th>Coin</th><th>Supply jump</th><th>Status</th><th>vs market</th></tr></thead><tbody id="uwRows"></tbody></table>
+    </div>
+  </section>
+
+  <section class="card p-4 overflow-x-auto">
     <h2 class="text-sm font-semibold text-white mb-2">Recent trades</h2>
     <table class="w-full"><thead><tr><th>Time</th><th>Symbol</th><th>Action</th><th>Price</th><th>P&amp;L</th><th>Reason</th></tr></thead><tbody id="tradeRows"></tbody></table>
   </section>
@@ -283,9 +294,25 @@ async function loadJournal() {
     : '<tr><td colspan="3" class="text-slate-500">Nothing recorded yet. The first equity point is saved within the first hour of a running plan.</td></tr>';
 }
 
-refresh(); loadTelegram(); loadJournal();
+// ---------- Unlock watch ----------
+async function loadUnlocks() {
+  let u;
+  try { u = await (await fetch('/api/unlock_watch/status')).json(); } catch (e) { return; }
+  const s = u.score || {};
+  $('uwScore').textContent = (u.last_check ? `last check ${u.last_check} · ` : 'first check within the hour · ') +
+    (s.n ? `${s.n} closed: average ${(100 * s.mean).toFixed(1)}% vs market, ${(100 * s.win).toFixed(0)}% winners, t ${s.t.toFixed(2)}` : 'no closed paper trades yet') +
+    ` · ${u.open || 0} open`;
+  $('uwRows').innerHTML = (u.events || []).length ? u.events.map(e => `<tr><td class="text-xs">${esc(e.date)}</td>
+    <td class="text-xs">${esc(e.symbol)}${e.trend_coin ? ' ⚠️' : ''}${e.batch ? ' <span class="text-slate-500">(batch)</span>' : ''}</td>
+    <td class="text-xs num">+${(100 * e.supply_jump).toFixed(1)}%</td><td class="text-xs">${esc(e.status)}</td>
+    <td class="text-xs num ${e.excess_return >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${(100 * e.excess_return).toFixed(1)}%</td></tr>`).join('')
+    : '<tr><td colspan="5" class="text-slate-500">No supply jumps recorded yet. The first daily check saves a baseline; jumps are measured from the second day.</td></tr>';
+}
+
+refresh(); loadTelegram(); loadJournal(); loadUnlocks();
 setInterval(refresh, 10000);
 setInterval(loadJournal, 60000);
+setInterval(loadUnlocks, 300000);
 </script>
 </body>
 </html>

@@ -571,6 +571,16 @@ def startup_news_guard():
     from backend.news_guard import news_guard
     news_guard.start()
 
+@app.on_event("startup")
+def startup_unlock_watch():
+    from backend.unlock_watch import unlock_watch
+    unlock_watch.start()
+
+@app.get("/api/unlock_watch/status")
+def get_unlock_watch_status():
+    from backend.unlock_watch import unlock_watch
+    return unlock_watch.status()
+
 @app.get("/api/news_guard/status")
 def get_news_guard_status():
     from backend.news_guard import news_guard

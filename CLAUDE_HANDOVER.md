@@ -444,6 +444,19 @@ Bybit blocks the server's region.
 - Holding the 7-day-signalled side when the gap is above 7%/yr, with 0.2% per switch: −0.1%/yr on average, positive
   for 10% of coins (small alts). No edge.
 
+**Unlock watch, live and paper only (`backend/unlock_watch.py`).** Started with the server.
+- **Daily check.** Once a day (after 01:00 UTC) one CoinGecko /coins/markets call saves price, circulating supply and
+  market cap of the top 250 coins to data/unlock_watch/snapshots/.
+- **Events.** Supply up ≥ 5% (and < 100%) since the previous snapshot, stablecoins skipped. Days with 3+ jumps are
+  flagged "batch" and scored separately.
+- **Paper trades.** Each event opens a 14-day paper hedged short (short the coin, long the equal-weight basket of
+  tracked coins, 0.2% costs).
+- **Alerts.** Telegram per event (with a warning for the trend strategy's 8 coins), per closed trade, and a weekly
+  score.
+- **Outputs.** data/unlock_watch/events.csv, GET /api/unlock_watch/status, and a card on the plan page.
+- **Purpose.** Out-of-sample evidence for the supply-jump effect. Tested with synthetic snapshots and a live server
+  smoke test.
+
 **Bottom line (2026-09-25).** Nothing tested beats the live 8-coin trend strategy out of sample. Its ceiling is roughly
 2× a year at ~5% risk per trade with deep drawdowns; ~1% risk (+30%/yr, −26% drawdown) is the sane setting, 2–3% if
 the user accepts deeper drawdowns for the deposit plan.
