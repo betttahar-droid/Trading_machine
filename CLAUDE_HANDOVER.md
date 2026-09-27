@@ -422,6 +422,28 @@ Muhn & Nikolaev 2024.
   - Added to the baseline: +0.001 AUC (95% −0.001 .. +0.002).
 - The published result needs a GPT-4-class model with step-by-step reasoning. Stopped at stage 2, no returns test.
 
+**Token unlocks from CoinGecko supply jumps (`backend/unlock_lab.py`).** The DefiLlama emissions API is paid (HTTP
+402) and its open-source adapters repo is outside this session's GitHub scope.
+- **Setup.** Proxy: CoinGecko market cap ÷ price = circulating supply (keyless API: last 365 days only), 220 coins
+  with Binance perps. Events: supply up ≥ 2% in a day; 432 events, 2025-10 .. 2026-09.
+- **Next 14 days vs the equal-weight coin basket.**
+  - All jumps: −2.9% (t −1.15), median −7.9%.
+  - Jumps ≥ 5% (205): −5.8% (t −3.0), median −7.9%.
+- **Checks weaken it.**
+  - 31% of events fall on days with 3+ jumps (CoinGecko batch updates such as 2026-03-12 and 2026-02-10); clustered
+    by day it is −3.2% (t −1.2).
+  - First half of the year −8.1% (t −2.9), second half −2.4% (t −1.0).
+  - An unhedged short with a +40% stop loses (−1.3% per trade).
+  - Hedged (short the coin, long the basket, 3% per trade): +10% over the year, Sharpe 0.64, max DD −19%.
+- **Suggestive, not proven.** Needs real unlock schedules (so shorts can start before the unlock) or months of forward
+  tracking.
+
+**Binance vs OKX funding arbitrage (`backend/funding_arb_lab.py`).** OKX keeps about 3 months of funding history;
+Bybit blocks the server's region.
+- 62 coins, 2026-07 .. 08: the average daily funding gap is 5.5%/yr.
+- Holding the 7-day-signalled side when the gap is above 7%/yr, with 0.2% per switch: −0.1%/yr on average, positive
+  for 10% of coins (small alts). No edge.
+
 **Bottom line (2026-09-25).** Nothing tested beats the live 8-coin trend strategy out of sample. Its ceiling is roughly
 2× a year at ~5% risk per trade with deep drawdowns; ~1% risk (+30%/yr, −26% drawdown) is the sane setting, 2–3% if
 the user accepts deeper drawdowns for the deposit plan.
