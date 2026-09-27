@@ -233,6 +233,38 @@ def returns(ev: pd.DataFrame) -> pd.DataFrame:
     return pd.concat([ev.reset_index(drop=True), pd.DataFrame(rows)], axis=1)
 
 
+def _offer_dates(cik) -> list:
+    """Dates of share-offering prospectuses (424B*) the company filed, from EDGAR's submissions API (cached)."""
+    os.makedirs(os.path.join(DATA, "subs"), exist_ok=True)
+    path = os.path.join(DATA, "subs", f"{int(cik)}.json")
+    if not os.path.exists(path):
+        forms, dates = [], []
+        r = _get(f"https://data.sec.gov/submissions/CIK{int(cik):010d}.json")
+        if r is not None:
+            j = r.json()
+            forms += j["filings"]["recent"]["form"]
+            dates += j["filings"]["recent"]["filingDate"]
+            for extra in j["filings"].get("files", []):
+                x = _get(f"https://data.sec.gov/submissions/{extra['name']}")
+                if x is not None:
+                    forms += x.json()["form"]
+                    dates += x.json()["filingDate"]
+        json.dump([d for f, d in zip(forms, dates) if f.startswith("424B")], open(path, "w"))
+        time.sleep(0.15)
+    return json.load(open(path))
+
+
+def dilution(ev: pd.DataFrame) -> pd.DataFrame:
+    with ThreadPoolExecutor(4) as ex:
+        offers = dict(zip(ev["cik"].unique(), ex.map(_offer_dates, ev["cik"].unique())))
+    def within(r, days):
+        d0 = r.file_date
+        return any(d0 <= pd.Timestamp(d) <= d0 + pd.Timedelta(days=days) for d in offers.get(r.cik, []))
+    ev = ev.copy()
+    ev["offer_10d"] = [within(r, 10) for r in ev.itertuples()]
+    return ev
+
+
 def _t(x: pd.Series) -> str:
     x = x.dropna()
     if len(x) < 5:
