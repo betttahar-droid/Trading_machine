@@ -252,6 +252,32 @@ Prediction markets were researched and dropped at the user's request (`backend/p
 - Volatility: slightly better than the last 30 bars' volatility (Spearman with the next 24h absolute move 0.33 vs 0.31,
   better in both halves), but too small to change position sizing.
 
+**Published / popular ideas checked on recent data (`backend/alt_lab.py`, 2026-09-27).** None is usable:
+- **Volatility targeting** (exposure × target / 30-day market volatility, capped 0.25–2×). It does not help: crypto
+  trend book Sharpe 1.17 → 1.07 after 2024-07; whole plan 1.74 → 1.79 but with deeper drawdowns (−24% → −28%). The
+  trend rules already size each trade by ATR.
+- **Bitcoin clock effects** (BTCUSDT 1-minute data, 2022-02 .. now).
+  - Quantpedia's "long 22:00–24:00 UTC" (Sharpe 1.58 on 2015–2021) has faded: +0.03% gross per trade 2022–24,
+    −0.01% since 2025, a loss even with limit orders.
+  - Intraday momentum (the 00:00–00:30 sign held for 23:30–24:00): nothing.
+  - "Monday Asia open" (Sun 23:00 → Mon 23:00 UTC): +0.21% above other days 2022–24 (t 0.7) and +0.42% since 2025
+    (t 1.5). Tuesday is similar, so it is not significant.
+- **Crash rebound** (buy after a 4h bar falls ≥ 4 standard deviations, hold 24h; chosen on 2020–24).
+  - On the live 8 coins it looked real: +1.8% then +2.0% per trade.
+  - On the point-in-time top 30/50 with delisted coins, and with trades on the same bar grouped, it is gone:
+    +0.1% per crash bar 2020–24 (t 0.1).
+  - Since 2025, 3 crash bars make more than all of the profit. Losses include LUNA −98% and several 2026 tokens
+    −60% to −83%.
+  - The 8-coin result was survivorship: those coins are, by construction, the ones that recovered.
+- **Funding carry** (long spot, short perp).
+
+  | Coin | 2022 | 2023 | 2024 | 2025 | 2026 Jan–Aug |
+  |---|---|---|---|---|---|
+  | BTC | +4.2% | +7.9% | +12.0% | +5.1% | +1.7% |
+  | ETH | +0.8% | +8.3% | +13.0% | +4.9% | +1.0% |
+
+  That is now about savings-account yield, plus exchange risk.
+
 **Bottom line (2026-09-25).** Nothing tested beats the live 8-coin trend strategy out of sample. Its ceiling is roughly
 2× a year at ~5% risk per trade with deep drawdowns; ~1% risk (+30%/yr, −26% drawdown) is the sane setting, 2–3% if
 the user accepts deeper drawdowns for the deposit plan.
