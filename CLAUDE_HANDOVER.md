@@ -369,6 +369,38 @@ user is a pharmacist: a domain edge plus a small local model to read announcemen
   - 2022+: −0.6%, cluster −1.6%.
   - Portfolio: +13%/yr (max DD −26%) then −5%/yr. Decayed, and not insider-specific.
 
+**Calendar effects (`backend/calendar_lab.py`).** SPY from 1993, QQQ from 1999, Bitcoin; before 2022 vs 2022+.
+- **Overnight.** Before 2022, close→open carried all the gains: SPY overnight Sharpe 1.01 vs daytime 0.07. Since 2022
+  overnight is 0.66 vs daytime 0.44, below holding the whole day (0.76). Break-even cost only 2.7–3.9 bp per round
+  trip.
+- **Turn of month:** +4.5 bp (t 1.3) before 2022, then +0.9 bp.
+- **Pre-holiday:** positive but not significant.
+- **FOMC announcement day:** +23.5 bp (t 3.0) before 2022, then −4.7 bp (SPY).
+- **Bitcoin:** turn of month, weekend and monthly-expiry effects are nothing consistent. The funding-settlement
+  30-minute drift was significant in 2022–23 only.
+
+**New-listing shorts, market-controlled (`backend/listing_deep_lab.py`).** Wait 3 days, hold 21, stop +60%.
+- Since 2024-07: +2.6% per trade, but shorting a basket of established perps over the same days made +3.2%, so the
+  difference is −0.5% (t −0.35). The gain was the altcoin bear market.
+- Before 2024-07, new listings did lag established coins (+5.5%, t 2.4), but that reversed in the last 5 quarters.
+- Portfolio at 2% per short: −3%/yr then +14%/yr (max DD −23%).
+
+**More TradFi markets (`backend/tradfi_extend_lab.py`).** Binance added oil (CLUSDT, BZUSDT), copper, platinum,
+palladium and IWMUSDT in 2026.
+- **Funding, longs pay per year:** oil −22% / −16% (longs are paid), copper +13%, platinum +18%, palladium +21%,
+  IWM 0%.
+- **Adding them does not help.**
+  - All 9: TradFi book Sharpe falls from 0.58–0.74 to 0.34–0.51, and the plan's out-of-sample Sharpe from 1.64–1.74
+    to 1.45–1.57.
+  - Oil + copper only: 1.70–1.78 depending on funding assumptions, with a lower drawdown (−19% vs −24%) but lower
+    10k odds (54–60% vs 61–63%).
+- **Long/short TradFi** raises the book's own Sharpe (0.82–0.89) but not the plan's.
+
+**Broker ETFs instead of perps for the TradFi half.** Unleveraged ETFs would lift the plan to Sharpe 1.92 and the
+level-2 odds to 68%. But the TradFi book runs at about 1.4× total equity at level 1 and 2.5× at level 2. Financed at
+margin or futures rates it is the same as perps: Sharpe 1.71–1.75, odds 58–59%. Perps are fine and the only option
+for small accounts.
+
 **Bottom line (2026-09-25).** Nothing tested beats the live 8-coin trend strategy out of sample. Its ceiling is roughly
 2× a year at ~5% risk per trade with deep drawdowns; ~1% risk (+30%/yr, −26% drawdown) is the sane setting, 2–3% if
 the user accepts deeper drawdowns for the deposit plan.
