@@ -26,7 +26,9 @@ from backend.universe_data import available_months
 MAKER = 0.0002
 
 
-def simulate(market: Dict[str, dict], p, start_ms: int, end_ms: int, mode: str, initial: float = 500.0):
+def simulate(market: Dict[str, dict], p, start_ms: int, end_ms: int, mode: str, initial: float = 500.0,
+             allow=None):
+    """allow(sym, ts) -> bool, optional entry filter (used by alt_season_lab)."""
     feats = {s: compute_features(m["bars"], p) for s, m in market.items()}
     timeline = sorted({b["timestamp"] for m in market.values() for b in m["bars"] if start_ms <= b["timestamp"] < end_ms})
     balance, positions, pending, curve = initial, {}, {}, []
@@ -128,7 +130,7 @@ def simulate(market: Dict[str, dict], p, start_ms: int, end_ms: int, mode: str, 
                     pending[sym] = {"type": "exit", "limit": px}
             elif sym not in pending:
                 sig = entry_signal(f, i, p)
-                if sig:
+                if sig and (allow is None or allow(sym, ts)):
                     pending[sym] = {"type": "entry", "side": sig, "atr": float(f["atr"][i]), "limit": px}
         curve.append((ts, balance + sum(x["upnl"] for x in positions.values())))
     return curve, stats
