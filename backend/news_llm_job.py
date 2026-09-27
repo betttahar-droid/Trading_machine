@@ -27,6 +27,8 @@ TOKEN = os.environ.get("JOB_TOKEN", "")
 MODELS = [("Qwen/Qwen2.5-7B-Instruct", "qwen7b"),
           ("Qwen/Qwen2.5-32B-Instruct-AWQ", "qwen32b"),
           ("Qwen/Qwen2.5-72B-Instruct-AWQ", "qwen72b")]
+if os.environ.get("JOB_MODELS"):                       # "repo:name,repo:name"
+    MODELS = [tuple(m.split(":")) for m in os.environ["JOB_MODELS"].split(",")]
 status = []
 downloaded = {}
 
@@ -119,8 +121,8 @@ def main():
             continue
         log(f"scored {name} in {time.time() - t0:.0f} s")
         blob = base64.b64encode(gzip.compress(open(out, "rb").read())).decode()
-        for i in range(0, len(blob), 4000):
-            print(f"[b64 {name} {i // 4000}] {blob[i:i + 4000]}", flush=True)
+        for i in range(0, len(blob), 400):                  # the Vast log keeps ~500 characters per line
+            print(f"[b64 {name} {i // 400}] {blob[i:i + 400]}", flush=True)
         print(f"[b64 {name} end] {len(blob)}", flush=True)
     log("ALL DONE")
     time.sleep(3600)
