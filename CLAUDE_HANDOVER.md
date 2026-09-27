@@ -210,6 +210,48 @@ advertising ~1%/day are not credible. AI reading news for small stocks (Lopez-Li
 reportedly decayed after 2023, and free stock-news data (FNSPID) ends in 2023, so it can't be checked on recent years.
 Prediction markets were researched and dropped at the user's request (`backend/predmarket_lab.py` unused).
 
+**LLMs reading breaking news (2026-09-27, `backend/news_llm_lab.py`, `news_llm_score.py`, `news_llm_job.py`).**
+- **Setup.** Every @WatcherGuru post, 2022-02 .. 2026-09 (12,465 after removing price ticks and ads), was shown to an
+  instruction-tuned LLM. The model answered one letter, A (strongly down) .. G (strongly up), for Bitcoin over the
+  next few hours; the score is the probability-weighted answer taken from the log-probabilities.
+- **Rules fixed before any result.**
+  - Test window 2025-01 .. now, after all models' training data.
+  - Entry on the BTCUSDT perp 1-2 minutes after the post; 0.15% round-trip costs; one position at a time.
+  - Pass: profitable in 2025 and in 2026, p < 0.01 against random directions, and better than following the last
+    15 minutes' move.
+- **Models.** Qwen2.5 7B, 32B (AWQ) and 72B (AWQ). Then, at the user's request, only models that fit an RTX 3050
+  with 4 GB: Qwen2.5-1.5B and 3B (AWQ 4-bit), Llama-3.2-3B, Phi-3.5-mini.
+  - Scored unattended on rented Vast.ai GPUs through the Vast REST API; SSH is blocked by the research server's proxy.
+  - The job receives posts and serves results over HTTP; plain HTTP to the instance works only through a CONNECT
+    tunnel (`curl --proxytunnel`).
+  - Total cost $1.37.
+- **Result: nothing, for every model size.**
+  - Spearman correlation of score with the next 15m / 1h / 4h / 24h return is within ±0.02 (±0.04 at 24h).
+  - Every rule lost almost exactly the 0.15% costs per trade.
+  - There was no signal even on 2022-24 news inside the models' training data.
+  - The scores mostly echo the move that already happened (correlation +0.12 to +0.17 with the 15 minutes before
+    entry).
+- **Follow-ups (`backend/news_llm_creative.py`), each built on 2022-24 and checked unchanged on 2025+.** All failed:
+  - Under- or over-reaction: big news with no move yet, or a big move on news rated minor.
+  - Gradient boosting on all models' answer probabilities: train AUC 0.68-0.72, test 0.50-0.52, +0.01% gross per
+    trade.
+  - Headline embeddings (bge-small) with ridge regression: test IC 0.00.
+  - "Impact" as a volatility warning: adds only +0.03 Spearman beyond the last day's volatility.
+  - Daily average tone vs the next 1-3 days: sign flips between periods.
+  - Altcoin headlines traded on the named coin (one position per coin): nothing clears t = 1 in 2025+ for the
+    small models.
+  - The 72B model looked promising on altcoin headlines at 4h: +0.15% net per trade, t = 2.1 in 2025+. That is below
+    the p < 0.01 bar, came out of many tries, and the model cannot run on the user's PC; it was not pursued.
+- The big-model scores are kept in `data/news_llm/too_big_for_3050/`.
+
+**Time-series foundation model (`backend/chronos_lab.py`).**
+- Amazon Chronos-Bolt small and base (released 2024-11; run on CPU) forecast the 8 coins' next 24h from 512
+  4-hour bars, once a day, 2025-01 .. 2026-08.
+- Direction: IC −0.004 to +0.008 (4h: −0.005 / +0.033, inconsistent between halves). Long/flat on the forecast:
+  −15% and −25% a year vs −19% holding all 8.
+- Volatility: slightly better than the last 30 bars' volatility (Spearman with the next 24h absolute move 0.33 vs 0.31,
+  better in both halves), but too small to change position sizing.
+
 **Bottom line (2026-09-25).** Nothing tested beats the live 8-coin trend strategy out of sample. Its ceiling is roughly
 2× a year at ~5% risk per trade with deep drawdowns; ~1% risk (+30%/yr, −26% drawdown) is the sane setting, 2–3% if
 the user accepts deeper drawdowns for the deposit plan.

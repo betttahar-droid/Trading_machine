@@ -146,7 +146,8 @@ def perm_p(df, direction, h, hk, n=1000, seed=0):
 
 
 def report(df: pd.DataFrame, label: str):
-    print(f"\n=== {label}: {len(df)} posts ===")
+    print(f"\n=== {label}: {len(df)} posts; score vs the move before entry (15 min): "
+          f"{df['score'].corr(df['pre15'], method='spearman'):+.3f} ===")
     rows = []
     llm_dir = np.where(df["score"] >= THRESH, 1, np.where(df["score"] <= -THRESH, -1, 0))
     mom_dir = np.where(llm_dir != 0, np.sign(df["pre15"].to_numpy()), 0).astype(int)
@@ -178,10 +179,28 @@ def evaluate():
         report(df[df.ts < TEST_START].reset_index(drop=True), f"{model} 2022-02 .. 2024-12 (inside training data)")
 
 
+def decode_log(path: str):
+    """Rebuild scores_<name>.csv from the '[b64 <name> <i>]' lines news_llm_job.py prints into the instance log."""
+    import base64
+    import gzip
+    parts: dict = {}
+    for line in open(path, encoding="utf-8", errors="replace"):
+        m = re.match(r"\[b64 (\w+) (\d+)\] (\S+)", line)
+        if m:
+            parts.setdefault(m.group(1), {})[int(m.group(2))] = m.group(3)
+    for name, chunks in parts.items():
+        blob = "".join(chunks[i] for i in sorted(chunks))
+        with open(os.path.join(OUT, f"scores_{name}.csv"), "wb") as f:
+            f.write(gzip.decompress(base64.b64decode(blob)))
+        print(f"scores_{name}.csv rebuilt from {len(chunks)} log lines")
+
+
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "evaluate"
     if cmd == "prepare":
         prepare_posts()
         prepare_prices()
+    elif cmd == "decode":
+        decode_log(sys.argv[2])
     else:
         evaluate()
