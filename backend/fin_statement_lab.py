@@ -189,6 +189,38 @@ def write_input():
     print(f"{len(df)} statements -> {out}")
 
 
+def evaluate_models(models=("qwen3b", "phi35")):
+    """Stage 2: model AUC vs the baseline on FY2022-24, and whether adding the model to the baseline helps
+    (combination weights fitted on FY2019-21; bootstrap 95% interval of the AUC gain)."""
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.metrics import roc_auc_score
+    df = pd.read_pickle(os.path.join(DATA, "dataset.pkl"))
+    rng = np.random.default_rng(0)
+    for m in models:
+        path = os.path.join(DATA, f"fs_{m}.csv")
+        if not os.path.exists(path):
+            continue
+        sc = pd.read_csv(path).rename(columns={"id": "adsh"})
+        d = df.merge(sc, on="adsh")
+        fit, te = d[d.fy.between(2019, 2021)], d[d.fy.between(2022, 2024)]
+        auc_m, auc_b = roc_auc_score(te.y, te.p_up), roc_auc_score(te.y, te.p_base)
+        comb = LogisticRegression().fit(fit[["p_base", "p_up"]], fit.y)
+        pc = comb.predict_proba(te[["p_base", "p_up"]])[:, 1]
+        auc_c = roc_auc_score(te.y, pc)
+        gains = []
+        for _ in range(300):
+            i = rng.integers(0, len(te), len(te))
+            yy = te.y.to_numpy()[i]
+            gains.append(roc_auc_score(yy, pc[i]) - roc_auc_score(yy, te.p_base.to_numpy()[i]))
+        lo, hi = np.percentile(gains, [2.5, 97.5])
+        print(f"{m}: test n {len(te)} | model AUC {auc_m:.3f} (accuracy {((te.p_up > 0.5) == te.y).mean():.1%}, "
+              f"says 'up' {(te.p_up > 0.5).mean():.0%}) | baseline {auc_b:.3f} | baseline + model {auc_c:.3f} "
+              f"(gain {auc_c - auc_b:+.3f}, 95% {lo:+.3f} .. {hi:+.3f})")
+
+
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "baseline"
+    if cmd == "evaluate":
+        evaluate_models()
+        sys.exit()
     {"collect": collect, "input": write_input, "baseline": baseline}.get(cmd, baseline)()
