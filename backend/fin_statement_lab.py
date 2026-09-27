@@ -156,6 +156,39 @@ def baseline():
           f"accuracy {((naive[te] > 0.5) == df.y[te]).mean():.1%}")
 
 
+ROWS = [("Revenue", "Revenue"), ("CostOfRevenue", "Cost of revenue"), ("GrossProfit", "Gross profit"),
+        ("OperatingIncome", "Operating income"), ("InterestExpense", "Interest expense"), ("IncomeTax", "Income tax"),
+        ("NetIncome", "Net income"), ("EPS", "Diluted EPS (USD)"), ("DilutedShares", "Diluted shares (millions)"),
+        ("Cash", "Cash and equivalents"), ("CurrentAssets", "Current assets"), ("TotalAssets", "Total assets"),
+        ("CurrentLiabilities", "Current liabilities"), ("LongTermDebt", "Long-term debt"),
+        ("TotalLiabilities", "Total liabilities"), ("Equity", "Shareholders' equity"),
+        ("OperatingCashFlow", "Operating cash flow"), ("Capex", "Capital expenditure"),
+        ("Depreciation", "Depreciation and amortisation"), ("Dividends", "Dividends paid")]
+
+
+def table(r) -> str:
+    lines = ["Item | Previous year | Current year"]
+    for key, label in ROWS:
+        a, b = r.get(f"{key}_t1"), r.get(f"{key}_t")
+        if pd.isna(a) and pd.isna(b):
+            continue
+        if key == "EPS":
+            fmt = lambda v: "n/a" if pd.isna(v) else f"{v:.2f}"
+        else:
+            fmt = lambda v: "n/a" if pd.isna(v) else f"{v / 1e6:,.1f}"
+        lines.append(f"{label} | {fmt(a)} | {fmt(b)}")
+    return "\n".join(lines)
+
+
+def write_input():
+    df = pd.read_pickle(os.path.join(DATA, "dataset.pkl"))
+    df = df[df.fy.between(2019, 2024)]
+    out = os.path.join(DATA, "input.jsonl")
+    df.assign(id=df.adsh, table=[table(r) for r in df.to_dict("records")])[["id", "table"]].to_json(
+        out, orient="records", lines=True)
+    print(f"{len(df)} statements -> {out}")
+
+
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "baseline"
-    collect() if cmd == "collect" else baseline()
+    {"collect": collect, "input": write_input, "baseline": baseline}.get(cmd, baseline)()
