@@ -278,6 +278,25 @@ Prediction markets were researched and dropped at the user's request (`backend/p
 
   That is now about savings-account yield, plus exchange risk.
 
+**Selling Bitcoin volatility (`backend/vol_premium_lab.py`).**
+- **Setup.** Each Friday, sell a 7-day BTC straddle, or an iron fly with wings ±10%, priced by Black-Scholes from
+  Deribit DVOL. Costs: Deribit fees, a vol-point spread and skew on the bought wings. 2021-04 .. 2026-08.
+- **The premium is real but shrinking.** DVOL was above the next week's realised volatility in 82% of weeks before
+  2024-07 (68% vs 55% on average) and 71% after (48% vs 43%).
+- **Priced at DVOL, it looked like a diversifier.**
+  - Iron fly alone after 2024-07: Sharpe 0.93, worst week −7.5%.
+  - Correlation with the plan: about 0.
+  - Plan plus half iron fly: Sharpe 2.01 vs 1.81, drawdown −11% vs −19%.
+- **At realistic prices the edge is gone.**
+  - A live Deribit snapshot (2026-09-27) showed 5-day ATM IV at 31% vs DVOL 34.7%, and about 8% bid-ask on weekly
+    options.
+  - Pricing at DVOL − 3 points and 1.5 points spread per leg: iron fly Sharpe 0.27 after 2024-07, and the plan plus
+    iron fly drops to 1.61.
+  - At DVOL − 5 points it loses money.
+- **Timing with a forecast hurt.** Selling only when implied / forecast volatility (30-day realised, or Chronos-Bolt)
+  is above its in-sample median did worse than always selling.
+- Not pursued. The premium has been competed away for small traders.
+
 **Bottom line (2026-09-25).** Nothing tested beats the live 8-coin trend strategy out of sample. Its ceiling is roughly
 2× a year at ~5% risk per trade with deep drawdowns; ~1% risk (+30%/yr, −26% drawdown) is the sane setting, 2–3% if
 the user accepts deeper drawdowns for the deposit plan.
