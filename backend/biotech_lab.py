@@ -194,6 +194,9 @@ def events(model: str) -> pd.DataFrame:
         ev["outcome"] = np.where(ev["out_D"] >= 0.5, "none", best)
         ev["phase"] = ev[["phase_A", "phase_B", "phase_C", "phase_D"]].idxmax(axis=1).str[-1].map(
             {"A": "1", "B": "2", "C": "3", "D": "?"})
+        if "ev_A" in ev.columns:
+            ev["evidence"] = ev[["ev_A", "ev_B", "ev_C", "ev_D"]].idxmax(axis=1).str[-1].map(
+                {"A": "strong", "B": "moderate", "C": "weak", "D": "none"})
     ev = ev[ev["outcome"] != "none"].copy()
     ev["file_date"] = pd.to_datetime(ev["file_date"])
     ev = ev.sort_values("file_date")
@@ -302,6 +305,16 @@ def evaluate(models):
             h2 = pd.concat([-neg.loc[neg["size"] == "large", "post60"], neg.loc[neg["size"] == "small", "post60"]]) - cost
             print(f"    RULE 1 long positive / short negative, 60d, 0.5% costs: {_t(h1)}")
             print(f"    RULE 2 short large-firm failures / buy small-firm failures, 60d: {_t(h2)}")
+            sp = e[(e.outcome == "positive") & (e["size"] == "small")]
+            lukewarm = ev.loc[(ev.period == "2015-21") & (ev.outcome == "positive") & (ev["size"] == "small"), "react"].median()
+            print(f"    RULE 4 (found by slicing, keywords) short small-firm 'positive' readouts the market met lukewarm "
+                  f"(reaction < {lukewarm:+.0%}): {_t(-sp.loc[sp.react < lukewarm, 'post60'] - cost)}")
+            if "evidence" in e.columns:
+                for evd in ("strong", "moderate", "weak"):
+                    g = sp[sp.evidence == evd]
+                    print(f"    small positive, evidence {evd:8s}: reaction {_t(g.react)} | next 60d {_t(g.post60)}")
+                print(f"    RULE 3 (fixed before results) short small-firm positive readouts rated weak/spun: "
+                      f"{_t(-sp.loc[sp.evidence == 'weak', 'post60'] - cost)}")
 
 
 if __name__ == "__main__":
