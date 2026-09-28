@@ -75,5 +75,47 @@ def main():
                   f"median {o['median_months']:.0f} months | below deposits at 24m {o['below_deposits_24m']:4.0%}")
 
 
+def project(deposit: float = 300.0, n_paths: int = 5000, seed: int = 11):
+    """EUR 500 + `deposit` a month with both improvements: gold via PAXGUSDT (~4%/yr funding instead of 12.1%) and
+    the smart-money book added at equal risk (scaled to the plan's volatility at each level). Also a cautious case
+    with the average daily return halved (volatility unchanged)."""
+    b = books()
+    paxg = dict(FUNDING_2026, GLD=0.04)
+    crypto_days = b.index
+    b["t"] = tsmom_returns(etf_prices("2005-01-01")[list(BINANCE_TRADFI)], paxg).reindex(crypto_days).fillna(0.0)
+    plan = combo(b, ["c", "t"])
+    full = combo(b, ["c", "t", "s"])
+    rng = np.random.default_rng(seed)
+    for level in (2, 3):
+        scale = 0.68 * level
+        p = plan * (b["c"].std() * scale / plan.std())
+        f = full * (p.std() / full.std())
+        for name, r in (("plan (gold via PAXG)", p), ("plan + smart money", f), ("plan + smart money, cautious", f - f.mean() / 2)):
+            a = r.to_numpy()
+            eq_paths = np.zeros((n_paths, 37))
+            for k in range(n_paths):
+                eq = 500.0
+                eq_paths[k, 0] = eq
+                starts = rng.integers(0, len(a) - 30, size=36)
+                for m, s0 in enumerate(starts, 1):
+                    eq = max(eq * np.prod(1 + a[s0:s0 + 30]), 0.0) + deposit
+                    eq_paths[k, m] = eq
+            hit = np.array([np.argmax(row >= 10_000) if (row >= 10_000).any() else np.nan for row in eq_paths])
+            ann = (1 + r).prod() ** (365 / len(r)) - 1
+            cells = []
+            for mth in (12, 24, 36):
+                q = np.percentile(eq_paths[:, mth], [10, 50, 90])
+                dep = 500 + deposit * mth
+                cells.append(f"{mth}m: deposited {dep:,.0f} -> median {q[1]:,.0f} (bad 10% {q[0]:,.0f}, good 10% {q[2]:,.0f}), "
+                             f"below deposits {np.mean(eq_paths[:, mth] < dep):.0%}")
+            print(f"\nlevel {level} | {name}: backtest {ann:+.0%}/yr, vol {r.std() * np.sqrt(365):.0%}, "
+                  f"max DD {((1 + r).cumprod() / (1 + r).cumprod().cummax() - 1).min():+.0%}")
+            for c in cells:
+                print("   " + c)
+            print(f"   10k reached: within 12m {np.mean(hit <= 12):.0%}, 24m {np.mean(hit <= 24):.0%}, 36m {np.mean(hit <= 36):.0%}; "
+                  f"median {np.nanmedian(hit):.0f} months")
+
+
 if __name__ == "__main__":
-    main()
+    import sys
+    project() if len(sys.argv) > 1 and sys.argv[1] == "project" else main()
