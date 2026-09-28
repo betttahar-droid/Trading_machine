@@ -538,6 +538,45 @@ plan in both periods.
   the 1h book: 0.86 / 1.51.
 - Limit orders help on 1h too (+0.1 Sharpe), but not enough to make up for the whipsaws. Rejected.
 
+**Binance Monitoring Tag shorts (`backend/warning_tag_lab.py`).** 139 coins tagged in 25 announcements
+(2023-10 .. 2026-09) on @binance_announcements; 90–93 had a USD-M perp.
+- **Pre-registered rule fails.** Short at the announcement day's UTC close, hold 7 days, minus the top-100 average:
+  −0.6% (t −0.2). The first half was +4.9%, the second −9.3%; 2026 −9.1%. One squeeze reached +291% in 7 days.
+- **The drop happens within hours.** Previous close → announcement-day close: −9.4% (t 5.6, 84% of coins fall).
+- **Fast version (post-hoc, event_lab machinery).** Short 60–120 s after the post, 0.7% round-trip costs, funding.
+  - 4h: +2.3% per coin. 24h: +4.4% per coin, 67% win, halves +5.5% / +3.4%.
+  - Bitcoin-adjusted and averaged per announcement: 24h +2.7% (t 1.8, 24 posts), halves +4.3% / +1.05%.
+  - Adverse moves within 24h: 90th percentile +16%, max +62%.
+- **Verdict.** A weaker cousin of the delisting short (+3.6% per trade at 4h). About 12 posts a year. Sized to survive
+  the squeezes it would add a few % a year. Not adopted; a forward paper log would be the next step.
+
+**TradFi signal blend (`backend/tradfi_signal_lab.py`).** Hurst-Ooi-Pedersen's 1/3/12-month average vs the plan's
+12-month rule on GLD/SLV/SPY/QQQ with 2026 funding.
+
+| TradFi signal | Book Sharpe 2007-19 / 2020+ | Plan Sharpe in / out |
+|---|---|---|
+| 12m (current) | 0.65 / 0.77 | 1.67 / 1.74 |
+| 1/3/12 monthly | 0.53 / 0.84 | 1.56 / 1.89 |
+| 1/3/12 weekly | 0.47 / 0.77 | 1.57 / 1.77 |
+| 3/6/12 monthly | 0.62 / 0.77 | 1.66 / 1.71 |
+
+- The blend is worse before 2020 and in-sample, and better only after mid-2024. Fails the rule; 12m stays.
+
+**Copying Hyperliquid vaults (`backend/hl_vault_lab.py`).** Every vault ever created (9,476; 6,372 closed, so no
+survivorship bias), with each vault's on-chain equity and cumulative P&L history (`vaultDetails`). Rule: every 4
+weeks, the top 10 by past 12-week return among vaults with ≥ $50k equity, held 4 weeks, minus the leader's 10% profit
+share.
+- **Data limit.** Hyperliquid keeps ~48 history points per vault, so older vaults have multi-week gaps and the clean
+  test only covers 2025-05 .. 2026-09 (19 periods, ~65 eligible vaults).
+- **No persistence.** Top 10: −50%/yr vs −2%/yr for the average vault. Past-vs-next rank correlation −0.11 (t −1.8);
+  the second half was worse (−0.19, t −3.0). Last quarter's winners are mostly high-risk bets that then lose.
+- Filling the gaps by interpolation (`--interp`, back to 2024-11) gives +0.05 (t 0.9). Interpolation biases towards
+  persistence, so even that is weak.
+- **HLP** (the exchange's own market-making and liquidation vault) was the steadiest: +16%/yr, weekly Sharpe ~1.5–2.3
+  since 2024-11. It is a yield-like product with exchange and tail-event risk (e.g. the 2025 JELLY squeeze), not a
+  skill signal.
+- Rejected.
+
 **Bottom line (2026-09-25).** Nothing tested beats the live 8-coin trend strategy out of sample. Its ceiling is roughly
 2× a year at ~5% risk per trade with deep drawdowns; ~1% risk (+30%/yr, −26% drawdown) is the sane setting, 2–3% if
 the user accepts deeper drawdowns for the deposit plan.

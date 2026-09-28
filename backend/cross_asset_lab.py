@@ -38,9 +38,17 @@ COST = 0.0005
 
 
 def etf_prices(start: str = "2006-01-01") -> pd.DataFrame:
+    """Daily closes of ETFS from Yahoo, cached for the day in data/etf_cache (Yahoo throttles repeated downloads)."""
+    import os
     import yfinance as yf
-    px = yf.download(ETFS, start=start, progress=False, auto_adjust=True)["Close"]
-    return px.dropna(how="all")
+    cache = os.path.join(os.path.dirname(__file__), "..", "data", "etf_cache", f"etfs_{start}_{time.strftime('%Y-%m-%d')}.pkl")
+    if os.path.exists(cache):
+        return pd.read_pickle(cache)
+    px = yf.download(ETFS, start=start, progress=False, auto_adjust=True)["Close"].dropna(how="all")
+    if set(ETFS) <= set(px.columns) and px[ETFS].iloc[-5:].notna().any().all():      # only complete downloads
+        os.makedirs(os.path.dirname(cache), exist_ok=True)
+        px.to_pickle(cache)
+    return px
 
 
 def tsmom_returns(px: pd.DataFrame, funding: dict = None) -> pd.Series:
