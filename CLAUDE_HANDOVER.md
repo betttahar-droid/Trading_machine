@@ -754,6 +754,47 @@ Hyperliquid keeps just each account's last 10,000 fills (weeks for active whales
 vol-sized legs. Sharpe 0.15 (2009–16) / −0.46 (2017+); with Binance funding −0.06 / −0.59. The always-on version is the
 same. Fails.
 
+**Mechanical flows in Bitcoin (`backend/flows_lab.py`, BTC 1-minute 2022-02 .. now).**
+- **Leveraged-ETF rebalancing into the US close (pre-registered).** Slope of the 15:00–16:00 ET return on the move
+  since the previous 16:00: +0.022 (t 2.1) in 2022–23, then −0.004 in 2024+ (2025 −0.023). It disappeared as those
+  ETFs grew. Fails.
+- **Round-number stop cascades (Osler 2003).** Crossing $1,000 levels vs arbitrary levels ($1,000k + 370): no
+  difference (|t| ≤ 1.5). Fails.
+- **Side result: the hour after 16:00 ET reverses the day's move.** Slope −0.026, t −4.1 (2024+); −1.6 in 2022–23.
+
+**Fading the US-close move (`backend/close_fade_lab.py`).** Found on BTC; ETH and SOL (Binance 1m OHLC) are the
+independent test.
+- **Rule:** if |move since the previous 16:00 ET| > 1%, take the opposite side at 16:00 ET.
+- **Before costs, 1-hour hold:** BTC ≈ +9 bp, ETH +5 / +10 bp, SOL +4 / +9 bp (2022–23 / 2024+). The 04:00 ET placebo
+  hour is momentum instead. So it is real and specific to the close (CME settlement, ETF price window, leveraged-ETF
+  rebalancing).
+- **After costs it loses.** Taker: −2 to −17 bp. Maker limits are worse (fills only when the price moves against the
+  trade).
+- **Verdict:** a real effect smaller than retail trading costs. Not tradable.
+
+**Binance funding-interval cuts (`backend/funding_squeeze_lab.py`).** Binance shortens a perp's funding interval
+(8h→4h/1h, 4h→1h) when funding hits its cap; the events come from the `funding_interval_hours` column.
+- 216 cuts (2021–2026), 87% with crowded shorts. Rule: take the side opposite the crowd, 7 days, market-adjusted,
+  funding included, 97 tradable events in the top 150.
+- Mean +32% but t 1.3. Longs against crowded shorts: price median −12.6% (31% win) plus funding +7.6% median; total
+  median −5.4%.
+- The mean comes from squeezes (ALPACA +1,789%, PIPPIN +436%, GUA +233%); without the best 5 it is −4%. The median
+  worst drop within the week is −19% (10th percentile −63%).
+- A lottery. Rejected.
+
+**Combining all crowd / flow signals (`backend/combo_lab.py`).** Ridge regression on 10 cross-sectional z-scores (smart
+money, taker, OI growth, funding, past 7/30-day returns, volume surge, biggest jump, Coinbase premium, Korean share),
+refitted each January on past data only.
+- Out of sample 2023–2026: Sharpe 0.24, max DD −69% (years +0.06 / −0.67 / −0.69 / +2.53).
+- Smart money alone: 1.46 (1.56 / 0.79 / 1.94 / 1.44).
+- The weights swing year to year. The single simple signal is the robust one.
+
+**Market-wide smart money as a trend brake and 52-week-high anchoring (`backend/anchor_lab.py`).**
+- **Brake:** trend book at half size when the top-30 median smart-money gap is below −1 z (8% of days). Sharpe
+  0.87 → 0.87 (2022–23) and 1.32 → 1.39 (2024+). Not adopted.
+- **52-week-high anchoring:** with funding 0.57 / 1.65, but with the past 30-day return removed −0.05 / 0.93. Mostly
+  momentum. Fails.
+
 **Insider buying across all US stocks (`backend/insider_lab.py`).** SEC Insider Transactions Data Sets 2008–2026Q1:
 officer/director open-market purchases ≥ $25k, one signal per company per 30 days.
 - **Data.** 52,050 signals 2010+ from 8,500 companies.
