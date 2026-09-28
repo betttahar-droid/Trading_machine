@@ -503,6 +503,25 @@ hindsight-selected. 2026 funding on those perps averages about +5%/yr (CRCL +16%
   - 15%: out-of-sample Sharpe 1.23. 20%: 1.46.
 - Not adopted.
 
+**Bitcoin around US macro releases (`backend/macro_lab.py`).** CPI and jobs-report dates from the BLS archive link
+names; FOMC from the Fed calendars; Bitcoin 1-minute data, 2022-02 .. now.
+- **Volatility.** The release hour moves 2–5× an ordinary hour: CPI 4.9× in 2022–23 and 2.5× since, FOMC 3.0× /
+  2.1×, jobs 1.7× / 2.1×.
+- **No directional drift passes.** Nothing had |t| ≥ 2 in 2022–23. The CPI reaction since 2024 (+37 bp, t 2.0) had
+  the opposite sign before.
+
+**Altcoin / Bitcoin pair trend (`backend/pairs_trend_lab.py`).** The live breakout rules on the log(alt/BTC) ratios of
+the 7 alts, both directions, equal volatility per pair, costs on two legs, funding ignored.
+- **Alone:** Sharpe 1.39 in-sample, then 0.37 out-of-sample (max DD −40%). Correlation with the crypto trend book
+  +0.25 / +0.29.
+- **Plan + pairs (equal risk):** Sharpe 2.03 in-sample vs 1.67, but 1.65 out-of-sample vs 1.74. It decayed; rejected.
+
+**Crypto sector momentum (`backend/sector_lab.py`).** CoinGecko categories (today's membership), one sector per coin,
+point-in-time top 100 perps.
+- **Weekly long top 2 / short bottom 2 by 28-day return:** −2%/yr (Sharpe 0.27) in 2021–23, +7%/yr (Sharpe 0.39)
+  since 2024.
+- **Long the top 2** vs holding all sectors: the same Sharpe (1.04) in 2021–23, then −37% vs −43%/yr. No edge.
+
 **Bottom line (2026-09-25).** Nothing tested beats the live 8-coin trend strategy out of sample. Its ceiling is roughly
 2× a year at ~5% risk per trade with deep drawdowns; ~1% risk (+30%/yr, −26% drawdown) is the sane setting, 2–3% if
 the user accepts deeper drawdowns for the deposit plan.
