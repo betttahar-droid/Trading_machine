@@ -679,6 +679,51 @@ close) for top-30 coins that also trade on Coinbase (~21 a day). 7 slices, 4 per
 - Fails the rule. The 2024+ strength coincides with the US spot ETFs, but that explanation came after seeing the
   data. Could be watched on paper, not traded.
 
+**Coinbase-premium watch, paper only (`backend/smart_watch.py` → `PremiumWatch`, 2026-09-28).**
+- The watch class now takes a name, legs and data folder. `PremiumWatch` runs a second paper book: the same
+  top-30 universe restricted to coins on Coinbase (USD, no 1000x tickers).
+- Signal = 7-day mean of log(Coinbase daily close / Binance spot daily close). Long 4 / short 4, 7 slices, funding.
+- `data/premium_watch/`, `GET /api/premium_watch/status`, a plan-page card and a Sunday Telegram summary.
+- Tested with mocked data and the live Coinbase candles API.
+
+**How long the smart-money signal lasts (`backend/volume_lab.py`).** Rebalance every N days in N slices, with
+funding, Sharpe 2022–23 / 2024+:
+
+| Holding period | Sharpe |
+|---|---|
+| 1 day | 1.49 / 1.49 |
+| 3 days | 1.23 / 1.41 |
+| 7 days | 1.11 / 1.45 |
+| 14 days | 1.13 / 1.52 |
+| 28 days | 1.04 / 1.29 |
+
+The signal decays slowly, so trading less often is fine: 14 days gave the smallest 2024+ drawdown (−19%). The watch
+uses 7.
+
+**Abnormal volume (`backend/volume_lab.py`).** Long the coins whose 7-day volume jumped vs the prior 60 days (the
+stock-market "high-volume premium"). With funding −0.51 / 0.33; opposite sign 0.08 / −0.57. Fails.
+
+**Korean retail frenzies (`backend/upbit_lab.py`).** Upbit KRW daily volume (full history via the public candles
+API) / Binance perp volume, for top-30 coins listed on Upbit (~16 a day).
+- **Pre-registered: short 7-day surges vs the prior 60 days.** With funding −0.15 / 0.06. Fails.
+- **Unplanned check: short the coins with the highest Korean share (level).** 0.87 / 0.60.
+  - Fragile: 3 per leg 0.21 / 1.59, 7 per leg 0.44 / 0.60; momentum removed 0.33 / 1.02; smart money removed
+    0.36 / 0.89.
+  - Years: 2022 −7%, 2023 +33%, 2024 +6%, 2025 +38%, 2026 +1%.
+  - A post-hoc hint only; no watch.
+
+**Wall Street positioning in CME Bitcoin futures (`backend/cme_btc_lab.py`).** CFTC Traders in Financial Futures,
+2018+. Hold Bitcoin only when asset managers' net long (share of OI) rose over 4 weeks: Sharpe −0.40 vs 0.75 for always
+holding (2018–22), 0.83 vs 1.08 (2023+). The other variants flip between periods. Fails.
+
+**Short sellers in US stocks (`backend/short_volume_lab.py`).** FINRA Reg SHO daily short volume (free,
+2018-08 .. now) for today's S&P 500 (503 tickers; survivorship noted). Signal = 20-day short share of volume minus its
+own prior-year level (Diether, Lee & Werner 2009). Weekly, fifths.
+- Long least / short most new short selling: Sharpe 0.12 (2019–22) / 0.17 (2023+).
+- Long-only, least-shorted fifth minus the universe: 0.99 / 0.21. It decayed.
+- The level of the short share instead of its change: −0.28 / 0.96. Inconsistent.
+- Fails.
+
 **Insider buying across all US stocks (`backend/insider_lab.py`).** SEC Insider Transactions Data Sets 2008–2026Q1:
 officer/director open-market purchases ≥ $25k, one signal per company per 30 days.
 - **Data.** 52,050 signals 2010+ from 8,500 companies.

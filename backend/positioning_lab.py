@@ -117,8 +117,9 @@ def signals(n: int = None):
     return sig, ret, member, close[cols]
 
 
-def backtest(sig, ret, member, legs=LEGS, lag=0, offset=0, funding=None, side="both"):
-    """Daily returns of the weekly long/short book. lag: extra days between the signal and the trade.
+def backtest(sig, ret, member, legs=LEGS, lag=0, offset=0, funding=None, side="both", every=7):
+    """Daily returns of the long/short book rebalanced every `every` days (default weekly). lag: extra days
+    between the signal and the trade.
     funding: dates x symbols daily funding paid by longs (shorts receive it). side: both | long | short (a leg minus
     the equal-weight average of the eligible coins)."""
     idx = ret.index
@@ -126,7 +127,7 @@ def backtest(sig, ret, member, legs=LEGS, lag=0, offset=0, funding=None, side="b
     nxt = ret.shift(-1).fillna(0.0)
     rows, w_prev = [], pd.Series(0.0, index=ret.columns)
     for k, d in enumerate(idx[:-1]):
-        if k % 7 == offset:
+        if k % every == offset:
             s = sig.loc[d].where(member.loc[d]).dropna()
             w = pd.Series(0.0, index=ret.columns)
             if len(s) >= 2 * legs:
