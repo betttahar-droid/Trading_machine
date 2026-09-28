@@ -601,6 +601,16 @@ def get_premium_watch_status():
     from backend.smart_watch import premium_watch
     return premium_watch.status()
 
+@app.on_event("startup")
+def startup_whale_watch():
+    from backend.smart_watch import whale_watch
+    whale_watch.start()
+
+@app.get("/api/whale_watch/status")
+def get_whale_watch_status():
+    from backend.smart_watch import whale_watch
+    return whale_watch.status()
+
 @app.get("/api/news_guard/status")
 def get_news_guard_status():
     from backend.news_guard import news_guard

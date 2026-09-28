@@ -16,7 +16,8 @@ the one survivor of ~70 ideas, so it needs out-of-sample evidence before real mo
   files        data/smart_watch/state.json, history.csv; GET /api/smart_watch/status for the plan page
 
 PremiumWatch (below) runs a second paper book the same way on the Coinbase premium (data/premium_watch/,
-GET /api/premium_watch/status).
+GET /api/premium_watch/status), and WhaleWatch a third on Hyperliquid's biggest winners' positions
+(data/whale_watch/, GET /api/whale_watch/status).
 """
 
 import csv
@@ -143,8 +144,8 @@ class SmartWatch:
 
         # 2 today's slice
         sig = {s: v for s in closes if (v := self.signal(s, end_ms)) is not None}
-        legs = self.LEGS
-        if len(sig) >= 2 * legs:
+        legs = min(self.LEGS, len(sig) // 2)
+        if legs >= 2:
             ranked = sorted(sig, key=sig.get)
             today = {**{s: 0.5 / legs for s in ranked[-legs:]}, **{s: -0.5 / legs for s in ranked[:legs]}}
         else:
@@ -261,5 +262,74 @@ class PremiumWatch(SmartWatch):
         return float(np.mean(logs)) if len(logs) >= 5 else None
 
 
+class WhaleWatch(SmartWatch):
+    """Paper forward test of following Hyperliquid's proven winners (no backtest is possible: Hyperliquid keeps only
+    each account's last 10,000 fills). Every day: the 100 accounts with the largest all-time profit among those with
+    >= $1M equity whose all-time volume is < 2,000x their equity (drops market makers); their current positions
+    (public on-chain); signal per coin = the whales' net notional / the coin's Hyperliquid open interest. Same top-30
+    Binance universe (coins also on Hyperliquid), long 5 / short 5 among coins the whales hold, 7 daily slices."""
+    NAME, TITLE, LEGS = "whale_watch", "🐳 Hyperliquid-whale watch", 5
+    HL = "https://api.hyperliquid.xyz/info"
+    BOARD = "https://stats-data.hyperliquid.xyz/Mainnet/leaderboard"
+    WHALES, MIN_EQUITY, MAX_TURNOVER = 100, 1e6, 2000
+
+    def __init__(self, api: Callable[[str, dict], object] = _get, data_dir: Optional[str] = None,
+                 post: Optional[Callable[[dict], object]] = None):
+        super().__init__(api, data_dir)
+        self.post = post or self._post
+        self._cache_ms, self._cache = None, {}
+
+    def _post(self, body: dict):
+        for k in range(4):
+            try:
+                r = requests.post(self.HL, json=body, timeout=30)
+                if r.status_code == 200:
+                    return r.json()
+                time.sleep(5 * (k + 1))
+            except requests.RequestException:
+                time.sleep(5 * (k + 1))
+        return None
+
+    @staticmethod
+    def hl_coin(sym: str) -> str:
+        base = sym[:-4]
+        return "k" + base[4:] if base.startswith("1000") else base
+
+    def whales(self) -> List[str]:
+        board = (self.api(self.BOARD, {}) or {}).get("leaderboardRows", [])
+        rows = []
+        for r in board:
+            w = dict(r.get("windowPerformances", []))
+            eq, at = float(r.get("accountValue") or 0), w.get("allTime") or {}
+            if eq >= self.MIN_EQUITY and float(at.get("vlm") or 0) < self.MAX_TURNOVER * eq and float(at.get("pnl") or 0) > 0:
+                rows.append((float(at["pnl"]), r["ethAddress"]))
+        return [a for _, a in sorted(rows, reverse=True)[:self.WHALES]]
+
+    def daily_signals(self, day_end_ms: int) -> Dict[str, float]:
+        if self._cache_ms == day_end_ms:
+            return self._cache
+        meta = self.post({"type": "metaAndAssetCtxs"}) or [{"universe": []}, []]
+        oi = {u["name"]: float(c.get("openInterest") or 0) * float(c.get("markPx") or 0)
+              for u, c in zip(meta[0]["universe"], meta[1])}
+        net: Dict[str, float] = {}
+        whales = self.whales()
+        for a in whales:
+            st = self.post({"type": "clearinghouseState", "user": a}) or {}
+            for p in st.get("assetPositions", []):
+                pos = p.get("position", {})
+                szi, val = float(pos.get("szi") or 0), float(pos.get("positionValue") or 0)
+                if szi:
+                    net[pos["coin"]] = net.get(pos["coin"], 0.0) + math.copysign(val, szi)
+        self._cache_ms = day_end_ms
+        self._cache = {c: v / oi[c] for c, v in net.items() if oi.get(c)}
+        self.state["whales_used"] = len(whales)
+        return self._cache
+
+    def signal(self, sym: str, day_end_ms: int) -> Optional[float]:
+        v = self.daily_signals(day_end_ms).get(self.hl_coin(sym))
+        return v if v else None                           # coins no whale holds are not ranked
+
+
 smart_watch = SmartWatch()
 premium_watch = PremiumWatch()
+whale_watch = WhaleWatch()

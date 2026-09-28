@@ -175,6 +175,18 @@
   </section>
 
   <section class="card p-4 overflow-x-auto">
+    <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+      <h2 class="text-sm font-semibold text-white">Hyperliquid-whale watch (research, paper only)</h2>
+      <span id="wwScore" class="text-xs text-slate-400"></span>
+    </div>
+    <p class="text-xs text-slate-500 mb-2">Once a day: the positions of Hyperliquid's 100 most profitable traders (public on-chain; market makers left out), summed per coin as a share of that coin's open interest. A paper long/short book among the 30 most-traded Binance perps leans with them. There is no history to backtest this, so it is tested going forward only. No real trades.</p>
+    <div id="wwLegs" class="text-xs text-slate-300 mb-2"></div>
+    <div class="max-h-72 overflow-y-auto">
+      <table class="w-full"><thead><tr><th>Day (UTC)</th><th>Paper return</th><th>Since start</th><th>Coins scored</th></tr></thead><tbody id="wwRows"></tbody></table>
+    </div>
+  </section>
+
+  <section class="card p-4 overflow-x-auto">
     <h2 class="text-sm font-semibold text-white mb-2">Recent trades</h2>
     <table class="w-full"><thead><tr><th>Time</th><th>Symbol</th><th>Action</th><th>Price</th><th>P&amp;L</th><th>Reason</th></tr></thead><tbody id="tradeRows"></tbody></table>
   </section>
@@ -350,13 +362,15 @@ async function loadWatch(p, url) {
 }
 const loadSmart = () => loadWatch('sw', '/api/smart_watch/status');
 const loadPremium = () => loadWatch('pw', '/api/premium_watch/status');
+const loadWhales = () => loadWatch('ww', '/api/whale_watch/status');
 
-refresh(); loadTelegram(); loadJournal(); loadUnlocks(); loadSmart(); loadPremium();
+refresh(); loadTelegram(); loadJournal(); loadUnlocks(); loadSmart(); loadPremium(); loadWhales();
 setInterval(refresh, 10000);
 setInterval(loadJournal, 60000);
 setInterval(loadUnlocks, 300000);
 setInterval(loadSmart, 300000);
 setInterval(loadPremium, 300000);
+setInterval(loadWhales, 300000);
 </script>
 </body>
 </html>
