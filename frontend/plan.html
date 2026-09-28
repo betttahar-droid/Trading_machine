@@ -163,6 +163,18 @@
   </section>
 
   <section class="card p-4 overflow-x-auto">
+    <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+      <h2 class="text-sm font-semibold text-white">Coinbase-premium watch (research, paper only)</h2>
+      <span id="pwScore" class="text-xs text-slate-400"></span>
+    </div>
+    <p class="text-xs text-slate-500 mb-2">Once a day: among the 30 most-traded Binance perps that also trade on Coinbase, a paper long/short book that leans long where US buyers on Coinbase pay the most compared with Binance, and short where they pay the least. It worked from 2024 but not in 2022-23, so it is watched here to see which is true. No real trades.</p>
+    <div id="pwLegs" class="text-xs text-slate-300 mb-2"></div>
+    <div class="max-h-72 overflow-y-auto">
+      <table class="w-full"><thead><tr><th>Day (UTC)</th><th>Paper return</th><th>Since start</th><th>Coins scored</th></tr></thead><tbody id="pwRows"></tbody></table>
+    </div>
+  </section>
+
+  <section class="card p-4 overflow-x-auto">
     <h2 class="text-sm font-semibold text-white mb-2">Recent trades</h2>
     <table class="w-full"><thead><tr><th>Time</th><th>Symbol</th><th>Action</th><th>Price</th><th>P&amp;L</th><th>Reason</th></tr></thead><tbody id="tradeRows"></tbody></table>
   </section>
@@ -321,27 +333,30 @@ async function loadUnlocks() {
     : '<tr><td colspan="5" class="text-slate-500">No supply jumps recorded yet. The first daily check saves a baseline; jumps are measured from the second day.</td></tr>';
 }
 
-// ---------- Smart-money watch ----------
-async function loadSmart() {
+// ---------- Paper watches (smart money, Coinbase premium) ----------
+async function loadWatch(p, url) {
   let u;
-  try { u = await (await fetch('/api/smart_watch/status')).json(); } catch (e) { return; }
+  try { u = await (await fetch(url)).json(); } catch (e) { return; }
   const s = u.score || {};
-  $('swScore').textContent = (u.last_check ? `last close ${u.last_check} · ` : 'first run after 00:05 UTC · ') +
+  $(p + 'Score').textContent = (u.last_check ? `last close ${u.last_check} · ` : 'first run after 00:05 UTC · ') +
     (s.days ? `${s.days} days: ${(100 * s.total).toFixed(1)}% total, Sharpe ${s.sharpe.toFixed(2)}` : 'no paper days yet');
   const short = x => (x || []).map(v => esc(v.replace('USDT', ''))).join(' ');
-  $('swLegs').innerHTML = (u.longs || []).length ? `<span class="text-emerald-400">Leaning long:</span> ${short(u.longs)}<br><span class="text-rose-400">Leaning short:</span> ${short(u.shorts)}` : '';
+  $(p + 'Legs').innerHTML = (u.longs || []).length ? `<span class="text-emerald-400">Leaning long:</span> ${short(u.longs)}<br><span class="text-rose-400">Leaning short:</span> ${short(u.shorts)}` : '';
   const h = (u.history || []).slice().reverse();
-  $('swRows').innerHTML = h.length ? h.map(e => `<tr><td class="text-xs">${esc(e.day)}</td>
+  $(p + 'Rows').innerHTML = h.length ? h.map(e => `<tr><td class="text-xs">${esc(e.day)}</td>
     <td class="text-xs num ${e.return >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${(100 * e.return).toFixed(2)}%</td>
     <td class="text-xs num">${(100 * (e.equity - 1)).toFixed(1)}%</td><td class="text-xs num">${e.coins}</td></tr>`).join('')
     : '<tr><td colspan="4" class="text-slate-500">Nothing yet. The book builds up over its first 7 days (one slice a day).</td></tr>';
 }
+const loadSmart = () => loadWatch('sw', '/api/smart_watch/status');
+const loadPremium = () => loadWatch('pw', '/api/premium_watch/status');
 
-refresh(); loadTelegram(); loadJournal(); loadUnlocks(); loadSmart();
+refresh(); loadTelegram(); loadJournal(); loadUnlocks(); loadSmart(); loadPremium();
 setInterval(refresh, 10000);
 setInterval(loadJournal, 60000);
 setInterval(loadUnlocks, 300000);
 setInterval(loadSmart, 300000);
+setInterval(loadPremium, 300000);
 </script>
 </body>
 </html>

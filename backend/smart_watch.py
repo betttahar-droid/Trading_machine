@@ -14,6 +14,9 @@ the one survivor of ~70 ideas, so it needs out-of-sample evidence before real mo
   paper P&L    daily closes, real funding (longs pay positive rates), 0.1% per unit of turnover
   alerts       Telegram once a week (Sunday): the week's and total paper return, current longs / shorts
   files        data/smart_watch/state.json, history.csv; GET /api/smart_watch/status for the plan page
+
+PremiumWatch (below) runs a second paper book the same way on the Coinbase premium (data/premium_watch/,
+GET /api/premium_watch/status).
 """
 
 import csv
@@ -31,18 +34,17 @@ import requests
 
 logger = logging.getLogger("layaquant.smart_watch")
 
-DATA = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "smart_watch"))
-STATE = os.path.join(DATA, "state.json")
-HISTORY = os.path.join(DATA, "history.csv")
+DATA_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data"))
 BASE = "https://fapi.binance.com"
-TOP_N, LEGS, SLICES, COST, CANDIDATES = 30, 6, 7, 0.001, 60
+TOP_N, SLICES, COST, CANDIDATES = 30, 7, 0.001, 60
 DAY_MS = 86_400_000
 
 
 def _get(path: str, params: dict):
+    """GET a Binance futures path, or any full URL (Binance spot, Coinbase)."""
     for k in range(4):
         try:
-            r = requests.get(BASE + path, params=params, timeout=20)
+            r = requests.get(path if path.startswith("http") else BASE + path, params=params, timeout=20)
             if r.status_code == 200:
                 return r.json()
             if r.status_code in (418, 429):
@@ -55,16 +57,21 @@ def _get(path: str, params: dict):
 
 
 class SmartWatch:
-    def __init__(self, api: Callable[[str, dict], object] = _get):
-        os.makedirs(DATA, exist_ok=True)
+    NAME, TITLE, LEGS = "smart_watch", "🐋 Smart-money watch", 6
+
+    def __init__(self, api: Callable[[str, dict], object] = _get, data_dir: Optional[str] = None):
+        self.data_dir = data_dir or os.path.join(DATA_ROOT, self.NAME)
+        self.state_path = os.path.join(self.data_dir, "state.json")
+        self.history_path = os.path.join(self.data_dir, "history.csv")
+        os.makedirs(self.data_dir, exist_ok=True)
         self.api = api
         self.state = {"last_day": None, "last_end_ms": None, "equity": 1.0, "slices": [], "weights": {}, "closes": {},
                       "history": [], "last_week_report": None, "started": None}
-        if os.path.exists(STATE):
+        if os.path.exists(self.state_path):
             try:
-                self.state.update(json.load(open(STATE)))
+                self.state.update(json.load(open(self.state_path)))
             except Exception as e:                        # noqa: BLE001
-                logger.warning(f"smart_watch state unreadable: {e}")
+                logger.warning(f"{self.NAME} state unreadable: {e}")
         self._thread: Optional[threading.Thread] = None
 
     # ---------- data ----------
@@ -120,8 +127,8 @@ class SmartWatch:
             return                                            # already marked to this close
         prev_ms = self.state.get("last_end_ms") or end_ms - DAY_MS   # covers missed days (server was off)
         closes = self.universe(end_ms)
-        if len(closes) < 2 * LEGS:
-            logger.warning("smart_watch: Binance data unavailable, retrying later")
+        if len(closes) < 2 * self.LEGS:
+            logger.warning(f"{self.NAME}: Binance data unavailable, retrying later")
             return
 
         # 1 mark the held book from the previous close to this close, funding included
@@ -136,9 +143,10 @@ class SmartWatch:
 
         # 2 today's slice
         sig = {s: v for s in closes if (v := self.signal(s, end_ms)) is not None}
-        if len(sig) >= 2 * LEGS:
+        legs = self.LEGS
+        if len(sig) >= 2 * legs:
             ranked = sorted(sig, key=sig.get)
-            today = {**{s: 0.5 / LEGS for s in ranked[-LEGS:]}, **{s: -0.5 / LEGS for s in ranked[:LEGS]}}
+            today = {**{s: 0.5 / legs for s in ranked[-legs:]}, **{s: -0.5 / legs for s in ranked[:legs]}}
         else:
             today = {}
         self.state["slices"] = (self.state["slices"] + [today])[-SLICES:]
@@ -167,17 +175,17 @@ class SmartWatch:
             self.state["last_week_report"] = week
             h = self.state["history"][-7:]
             wk = float(np.prod([1 + x["return"] for x in h]) - 1)
-            longs = " ".join(s.replace("USDT", "") for s, w in sorted(target.items(), key=lambda x: -x[1])[:LEGS] if w > 0)
-            shorts = " ".join(s.replace("USDT", "") for s, w in sorted(target.items(), key=lambda x: x[1])[:LEGS] if w < 0)
-            notifier.send(f"🐋 Smart-money watch (paper): this week {100 * wk:+.1f}%, since {self.state['started']} "
+            longs = " ".join(s.replace("USDT", "") for s, w in sorted(target.items(), key=lambda x: -x[1])[:legs] if w > 0)
+            shorts = " ".join(s.replace("USDT", "") for s, w in sorted(target.items(), key=lambda x: x[1])[:legs] if w < 0)
+            notifier.send(f"{self.TITLE} (paper): this week {100 * wk:+.1f}%, since {self.state['started']} "
                           f"{100 * (self.state['equity'] - 1):+.1f}%.\nLeaning long: {longs}\nLeaning short: {shorts}")
         self._save()
 
     def _save(self):
-        json.dump(self.state, open(STATE, "w"), indent=1)
+        json.dump(self.state, open(self.state_path, "w"), indent=1)
 
     def _write_history(self):
-        with open(HISTORY, "w", newline="") as f:
+        with open(self.history_path, "w", newline="") as f:
             w = csv.DictWriter(f, fieldnames=["day", "equity", "return", "turnover", "coins", "longs", "shorts"])
             w.writeheader()
             w.writerows(self.state["history"])
@@ -195,7 +203,7 @@ class SmartWatch:
                 "longs": sorted((s for s in w if w[s] > 0), key=lambda s: -w[s]),
                 "shorts": sorted((s for s in w if w[s] < 0), key=lambda s: w[s]),
                 "history": self.state["history"][-60:],
-                "file": os.path.relpath(HISTORY, os.path.dirname(os.path.dirname(DATA)))}
+                "file": os.path.relpath(self.history_path, os.path.dirname(DATA_ROOT))}
 
     # ---------- background loop ----------
     def start(self):
@@ -212,8 +220,46 @@ class SmartWatch:
                 if self.state.get("last_day") != yesterday and (now.hour, now.minute) >= (0, 5):
                     self.run_day(yesterday)
             except Exception as e:                        # noqa: BLE001
-                logger.warning(f"smart_watch error: {e}")
+                logger.warning(f"{self.NAME} error: {e}")
             time.sleep(900)
 
 
+class PremiumWatch(SmartWatch):
+    """Paper forward test of the Coinbase premium (cb_premium_lab.py): same top-30 universe and 7 daily slices, coins
+    that also trade on Coinbase in USD (no 1000x tickers); signal = 7-day mean of log(Coinbase close / Binance spot
+    close); long the 4 highest, short the 4 lowest. It failed its 2022-23 backtest and worked from 2024, so it is
+    watched here, not traded."""
+    NAME, TITLE, LEGS = "premium_watch", "🇺🇸 Coinbase-premium watch", 4
+    COINBASE = "https://api.exchange.coinbase.com"
+    SPOT = "https://api.binance.com/api/v3/klines"
+
+    def __init__(self, api: Callable[[str, dict], object] = _get, data_dir: Optional[str] = None):
+        super().__init__(api, data_dir)
+        self._bases, self._bases_day = set(), None
+
+    def coinbase_bases(self) -> set:
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        if self._bases_day != today:
+            p = self.api(f"{self.COINBASE}/products", {}) or []
+            bases = {x["base_currency"] for x in p if x.get("quote_currency") == "USD" and not x.get("trading_disabled")}
+            if bases:
+                self._bases, self._bases_day = bases, today
+        return self._bases
+
+    def signal(self, sym: str, day_end_ms: int) -> Optional[float]:
+        base = sym[:-4]
+        if sym.startswith("1000") or base not in self.coinbase_bases():
+            return None
+        start = day_end_ms - 7 * DAY_MS
+        iso = lambda ms: datetime.fromtimestamp(ms / 1000, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        cb = self.api(f"{self.COINBASE}/products/{base}-USD/candles",
+                      {"granularity": 86400, "start": iso(start), "end": iso(day_end_ms - DAY_MS)}) or []
+        spot = self.api(self.SPOT, {"symbol": sym, "interval": "1d", "startTime": start, "endTime": day_end_ms - 1}) or []
+        cb_close = {int(x[0]) * 1000: float(x[4]) for x in cb if isinstance(x, list)}
+        logs = [math.log(cb_close[int(x[0])] / float(x[4])) for x in spot
+                if int(x[0]) in cb_close and float(x[4]) > 0 and cb_close[int(x[0])] > 0 and start <= int(x[0]) < day_end_ms]
+        return float(np.mean(logs)) if len(logs) >= 5 else None
+
+
 smart_watch = SmartWatch()
+premium_watch = PremiumWatch()
