@@ -806,6 +806,33 @@ refitted each January on past data only.
 - Tested on a mocked account: one-time cost €0.58 on a 415 USDT position; the second call does nothing.
 - Silver has no tokenized alternative on Binance (XAGUSDT funding ~22%/yr in 2026; still the main TradFi cost).
 
+**Large disciplined search with a locked holdout (`backend/search_lab.py`).** Asked for "the 1-in-a-million idea",
+done the way that keeps luck out.
+- **Space.** 8 base series (smart-money gap, top-trader ratio, all-account ratio, taker, OI, funding, price, volume)
+  × 9 transforms × both signs × holding 1/3/7/14 days × 4/6/10 coins per leg = 1,728 variants.
+- **Selection.** Vectorised 7-slice-style book on the point-in-time top 30 with costs and funding. Chosen on
+  2022-01 .. 2025-06 only; a variant must also be positive in both halves of that period.
+- **Luck benchmark.** 200 random (7-day smoothed) signals through the same selection: best of 4 variants → search
+  Sharpe median 0.50, 95th percentile 1.05. Scaled to 1,728 variants the luck level is roughly 2.4 (an overstatement,
+  since variants are correlated). No variant beats it.
+- **Where consistency lives.** Only crowd positioning is consistently positive through the search period.
+  - Smart-money gap: 1.28–1.42 in both halves across many variants.
+  - Contrarian all-account ratio: best 1.64, 28% of its variants pass.
+  - OI (1% pass), taker (8%), volume (10%) and funding (25%, best 0.77) show nothing robust.
+- **Holdout 2025-07 .. now, opened once for the best variant per base:**
+
+| Variant | Search Sharpe | Holdout Sharpe |
+|---|---|---|
+| Smart-money mean3, daily, 6 per leg | 1.39 | 1.42 |
+| Contrarian all-accounts chg7v30 | 1.62 | 1.03 |
+| Contrarian top-trader ratio mean7 | 1.13 | 1.76 |
+| Price z3, 7-day hold (momentum) | 1.27 | 1.41 |
+| Funding mean7 | 0.77 | −0.53 |
+
+- **Conclusion.** The search independently rediscovers the smart-money family as the one robust edge, and it holds up
+  on locked data. No hidden better signal exists in this data. The live tracker is kept as it is: the holdout is now
+  used, so switching to a "better" variant would be selection on the holdout.
+
 **Insider buying across all US stocks (`backend/insider_lab.py`).** SEC Insider Transactions Data Sets 2008–2026Q1:
 officer/director open-market purchases ≥ $25k, one signal per company per 30 days.
 - **Data.** 52,050 signals 2010+ from 8,500 companies.
