@@ -478,6 +478,31 @@ priced in BTC is above its 30-day mean (on 45% of the time).
 
 **Bitcoin ETF flows:** blocked. Farside is behind a Cloudflare challenge and the alternatives are paid.
 
+**Crypto session effects (`backend/session_lab.py`).** Six 4-hour UTC blocks, 8 coins, before 2024 vs 2024+.
+- **Two blocks passed the in-sample test and faded.**
+  - 04–08 UTC: +14.4 bp (t 3.4), then +1.4 bp.
+  - 20–24 UTC: +10.1 bp (t 2.1), then +5.8 bp.
+- **Trading them since 2024:** −11%/yr and +3%/yr with limit orders, much worse as taker.
+- Since 2024 Bitcoin's gains came outside US hours (US hours −1.1 bp per 4h bar vs +2.9 bp, t 2.1), but that is too
+  small to trade daily.
+
+**Crypto-linked stocks vs Bitcoin (`backend/linked_lab.py`).** COIN, MSTR, HOOD, MARA and RIOT, with Bitcoin priced at
+exactly 16:00 New York.
+- **Daily lead:** |correlation| ≤ 0.10 and sign-inconsistent.
+- **Hourly lead** (Yahoo 60m, last two years): about 0 either way; same-hour correlation 0.52–0.78.
+- An earlier +0.50 "lead" was a timestamp bug: Yahoo stamps bars with their start time.
+- **Snap-back** of stock/BTC at |20-day z| > 2: about 0 before 2024; only COIN since 2024 (+3.9%, t 2.6). Rejected.
+
+**Mega-cap stock trend book:** not tested. Binance's stock perps are today's winners, so a backtest would be
+hindsight-selected. 2026 funding on those perps averages about +5%/yr (CRCL +16%, GOOGL/AMD +11%).
+
+**Plan overlays (`backend/plan_overlay_lab.py`).**
+- **Adaptive 90-day inverse-vol weights:** Sharpe 1.59 / 1.70 vs 1.67 / 1.74, drawdowns −36% / −31%. Worse.
+- **Drawdown brake (halve exposure below −X%).**
+  - 10%: Sharpe 1.66 / 1.71, DD −17% / −18%, lower returns. The same trade-off as a lower risk level.
+  - 15%: out-of-sample Sharpe 1.23. 20%: 1.46.
+- Not adopted.
+
 **Bottom line (2026-09-25).** Nothing tested beats the live 8-coin trend strategy out of sample. Its ceiling is roughly
 2× a year at ~5% risk per trade with deep drawdowns; ~1% risk (+30%/yr, −26% drawdown) is the sane setting, 2–3% if
 the user accepts deeper drawdowns for the deposit plan.
