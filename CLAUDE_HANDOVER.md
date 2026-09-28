@@ -795,6 +795,17 @@ refitted each January on past data only.
 - **52-week-high anchoring:** with funding 0.57 / 1.65, but with the past 30-day return removed −0.05 / 0.93. Mostly
   momentum. Fails.
 
+**Gold through PAXGUSDT instead of XAUUSDT (2026-09-28, live plan change).**
+- Funding paid by longs: XAUUSDT ~12%/yr in 2026 (8.0% Jan–Aug), PAXGUSDT ~4%/yr (2.8% Jan–Aug), XAUTUSDT ~4%/yr.
+- PAXGUSDT tracks XAUUSDT: daily correlation 0.997, tracking error 2.2%/yr (noise, no drift), price ratio 0.99–1.015.
+  About $82M/day volume.
+- At level 3 gold is ~1× equity, so the switch saves ~8% of equity a year while gold is held, with no change of bet.
+- Code: `tradfi_book.ASSETS` maps GLD → PAXGUSDT and `REPLACED = {XAUUSDT: PAXGUSDT}`.
+  `paper_trader._tradfi_migrate` (called every TradFi step) closes an old XAUUSDT position and opens the same notional
+  in PAXGUSDT once, with a journal/Telegram event.
+- Tested on a mocked account: one-time cost €0.58 on a 415 USDT position; the second call does nothing.
+- Silver has no tokenized alternative on Binance (XAGUSDT funding ~22%/yr in 2026; still the main TradFi cost).
+
 **Insider buying across all US stocks (`backend/insider_lab.py`).** SEC Insider Transactions Data Sets 2008–2026Q1:
 officer/director open-market purchases ≥ $25k, one signal per company per 30 days.
 - **Data.** 52,050 signals 2010+ from 8,500 companies.

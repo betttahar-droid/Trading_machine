@@ -15,8 +15,12 @@ from typing import Dict
 import numpy as np
 import pandas as pd
 
-ASSETS: Dict[str, str] = {"XAUUSDT": "GLD", "XAGUSDT": "SLV", "SPYUSDT": "SPY", "QQQUSDT": "QQQ"}
-NAMES = {"XAUUSDT": "Gold", "XAGUSDT": "Silver", "SPYUSDT": "S&P 500", "QQQUSDT": "Nasdaq 100"}
+# Gold trades through PAXGUSDT (tokenized, LBMA-backed gold): it tracks XAUUSDT (daily correlation 0.997, $80M+/day
+# volume) but longs paid ~4%/yr funding in 2025-26 instead of ~12%/yr on XAUUSDT (research: CLAUDE_HANDOVER.md).
+ASSETS: Dict[str, str] = {"PAXGUSDT": "GLD", "XAGUSDT": "SLV", "SPYUSDT": "SPY", "QQQUSDT": "QQQ"}
+NAMES = {"PAXGUSDT": "Gold", "XAUUSDT": "Gold", "XAGUSDT": "Silver", "SPYUSDT": "S&P 500", "QQQUSDT": "Nasdaq 100"}
+# Positions opened on an older contract are moved to its replacement once (paper_trader._tradfi_migrate).
+REPLACED = {"XAUUSDT": "PAXGUSDT"}
 CRYPTO_RISK_PER_LEVEL = 0.0068      # crypto trend risk per trade at risk level 1 (%)
 TRADFI_VOL_PER_LEVEL = 0.146        # TradFi book yearly volatility target at risk level 1
 PER_ASSET_CAP = 1.5                 # max notional per asset, x equity

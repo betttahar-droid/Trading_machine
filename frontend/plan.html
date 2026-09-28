@@ -255,8 +255,8 @@ async function refresh() {
   $('scanRows').innerHTML = (s.crypto_scanner || []).map(r => `<tr><td>${esc((r.symbol || '').replace('USDT', ''))}</td><td class="text-xs">${esc(r.status)}</td><td class="text-xs text-slate-400">${esc(r.note)}</td></tr>`).join('');
 
   const held = Object.fromEntries(((s.books || {}).TRADFI || []).map(p => [p.symbol, p]));
-  const names = {XAUUSDT: 'Gold', XAGUSDT: 'Silver', SPYUSDT: 'S&P 500', QQQUSDT: 'Nasdaq 100'};
-  const etf = {XAUUSDT: 'GLD', XAGUSDT: 'SLV', SPYUSDT: 'SPY', QQQUSDT: 'QQQ'};
+  const names = {PAXGUSDT: 'Gold', XAUUSDT: 'Gold', XAGUSDT: 'Silver', SPYUSDT: 'S&P 500', QQQUSDT: 'Nasdaq 100'};
+  const etf = {PAXGUSDT: 'GLD', XAUUSDT: 'GLD', XAGUSDT: 'SLV', SPYUSDT: 'SPY', QQQUSDT: 'QQQ'};
   $('tradfiRows').innerHTML = Object.keys(names).map(sym => {
     const sig = (plan.tradfi_signals || {})[etf[sym]] || {};
     const w = (plan.tradfi_weights || {})[sym];

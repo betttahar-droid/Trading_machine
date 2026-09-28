@@ -1578,14 +1578,15 @@ class PaperTrader:
         self.append_trade_csv(record)
         logger.info(f"[TRADFI] {side} {sym} {units:.6f} @ {px} | {reason}")
 
-    def _tradfi_rebalance(self, sym: str, target: float, mark: float, sig: dict):
+    def _tradfi_rebalance(self, sym: str, target: float, mark: float, sig: dict, why: Optional[str] = None):
         """Move the TradFi position in `sym` to `target` USDT notional (long or flat)."""
         pos = self.positions.get(sym)
         if pos and pos.get("strategy") != "TRADFI":
             return
         slip = self.slippage_bps / 10000.0
         cur = pos["units"] * mark if pos else 0.0
-        why = f"monthly rebalance: 12m return {sig['mom12']:+.1%}, volatility {sig['vol60']:.0%} -> target {target:,.0f} USDT"
+        why = why or (f"monthly rebalance: 12m return {sig['mom12']:+.1%}, volatility {sig['vol60']:.0%} "
+                      f"-> target {target:,.0f} USDT")
         if target < 10.0:
             if pos:
                 self._trend_close(sym, pos, mark, f"TradFi {why}", "TRADFI_CLOSE")
@@ -1628,9 +1629,35 @@ class PaperTrader:
             pos["initial_risk_usd"] = target
             self._tradfi_record(sym, "TRADFI_REDUCE_LONG", px, du, fee, gross - fee, why)
 
+    def _tradfi_migrate(self):
+        """Move TradFi positions from a replaced contract to its successor (tradfi_book.REPLACED), keeping the same
+        notional, e.g. gold XAUUSDT -> PAXGUSDT for lower funding. Both quotes must be available."""
+        from backend import tradfi_book as tb
+        for old, new in tb.REPLACED.items():
+            pos = self.positions.get(old)
+            if not pos or pos.get("strategy") != "TRADFI" or new in self.positions:
+                continue
+            q_old, q_new = self._tradfi_quote(old), self._tradfi_quote(new)
+            if not q_old or not q_new:
+                continue
+            notional = pos["units"] * q_old["mark"]
+            self._trend_close(old, pos, q_old["mark"], f"TradFi: switching {tb.NAMES.get(old, old)} from {old} to {new} "
+                              f"(same exposure, lower funding)", "TRADFI_CLOSE")
+            sig = (self.plan.get("tradfi_signals") or {}).get(tb.ASSETS[new], {"mom12": 0.0, "vol60": 0.0})
+            self._tradfi_rebalance(new, notional, q_new["mark"], sig,
+                                   why=f"switched from {old} (same exposure, lower funding)")
+            if self.plan.get("tradfi_weights", {}).get(old) is not None:
+                self.plan["tradfi_weights"][new] = self.plan["tradfi_weights"].pop(old)
+            logger.info(f"[TRADFI] migrated {old} -> {new}, notional {notional:,.2f} USDT")
+            plan_reporter.event("rebalance", f"🔄 {tb.NAMES.get(new, new)} position moved from {old} to {new}: same "
+                                f"exposure ({notional:,.0f} USDT), lower funding (about 4%/yr instead of 12%/yr for "
+                                f"longs in 2026).", symbol=new, amount=notional)
+            self.save_state()
+
     def _evaluate_tradfi_step(self):
         """Mark and fund TradFi positions every loop; rebalance them once a month (tradfi_book.py rules)."""
         from backend import tradfi_book as tb
+        self._tradfi_migrate()
         now = time.time()
         now_ms = int(now * 1000)
         for sym, pos in list(self.positions.items()):

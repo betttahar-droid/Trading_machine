@@ -29,7 +29,7 @@ EQUITY_COLS = ["time_utc", "ts", "equity", "deposited", "trading_pnl", "cash", "
 EVENT_COLS = ["time_utc", "ts", "kind", "symbol", "amount", "text"]
 DD_LEVELS = (10, 20, 30, 40)
 HISTORICAL_WORST = {1.0: 25, 1.5: 35, 2.0: 45, 2.5: 50, 3.0: 60}   # combined plan, % below peak (backtests)
-NAMES = {"XAUUSDT": "Gold", "XAGUSDT": "Silver", "SPYUSDT": "S&P 500", "QQQUSDT": "Nasdaq 100"}
+NAMES = {"PAXGUSDT": "Gold", "XAUUSDT": "Gold", "XAGUSDT": "Silver", "SPYUSDT": "S&P 500", "QQQUSDT": "Nasdaq 100"}
 
 
 def _append(path: str, cols: List[str], row: list):
