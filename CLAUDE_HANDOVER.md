@@ -522,6 +522,22 @@ point-in-time top 100 perps.
   since 2024.
 - **Long the top 2** vs holding all sectors: the same Sharpe (1.04) in 2021–23, then −37% vs −43%/yr. No edge.
 
+**Faster trend book: 1-hour breakouts with limit orders (`backend/fast_trend_lab.py`).** The live rules on 1h bars
+(same bar counts, so 4× faster), 8 coins, maker_lab "limit_chase" execution. Kept only if plan + fast book beat the
+plan in both periods.
+
+| Book (own $500 account) | Sharpe in / out | Max DD in / out | Entries |
+|---|---|---|---|
+| 4h 120/60 (live), limit | 1.70 / 1.19 | −18% / −26% | 439 |
+| 1h 120/60, limit | 0.51 / 0.85 | −47% / −52% | 1,810 |
+| 1h 120/60, market orders | 0.39 / 0.77 | −51% / −53% | 1,810 |
+| 1h 240/120, limit | 0.78 / 1.08 | −24% / −34% | 1,256 |
+
+- **Correlation with the 4h book:** +0.60 / +0.62 (240/120: +0.66 / +0.71). It is the same trade, with more noise.
+- **Plan + 1h 120/60:** Sharpe 1.39 / 1.60 vs the plan's 1.68 / 1.76. 240/120: 1.51 / 1.72. Replacing the 4h book with
+  the 1h book: 0.86 / 1.51.
+- Limit orders help on 1h too (+0.1 Sharpe), but not enough to make up for the whipsaws. Rejected.
+
 **Bottom line (2026-09-25).** Nothing tested beats the live 8-coin trend strategy out of sample. Its ceiling is roughly
 2× a year at ~5% risk per trade with deep drawdowns; ~1% risk (+30%/yr, −26% drawdown) is the sane setting, 2–3% if
 the user accepts deeper drawdowns for the deposit plan.

@@ -29,7 +29,7 @@ from backend.trend_strategy import TrendParams, compute_features, entry_signal, 
 DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data"))
 CACHE_DIR = os.path.join(DATA_DIR, "backtest_cache")
 UNIVERSE = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT", "XRPUSDT", "BNBUSDT", "AVAXUSDT", "SUIUSDT"]
-INTERVAL_MS = {"1d": 86_400_000, "4h": 14_400_000}
+INTERVAL_MS = {"1d": 86_400_000, "4h": 14_400_000, "1h": 3_600_000}
 START = "2020-01-01"
 SPLIT = "2024-07-01"          # IS: START..SPLIT, OOS: SPLIT..now
 
