@@ -724,6 +724,36 @@ own prior-year level (Diether, Lee & Werner 2009). Weekly, fifths.
 - The level of the short share instead of its change: −0.28 / 0.96. Inconsistent.
 - Fails.
 
+**Hyperliquid-whale watch, paper only (`backend/smart_watch.py` → `WhaleWatch`).** A forward test only, because
+Hyperliquid keeps just each account's last 10,000 fills (weeks for active whales), so past positions can't be rebuilt.
+- **Daily inputs.**
+  - The leaderboard (stats-data.hyperliquid.xyz, ~47k accounts) gives the 100 largest all-time profits among
+    accounts with ≥ $1M equity. Accounts whose all-time volume is ≥ 2,000× equity are dropped as market makers.
+  - Their current positions come from `clearinghouseState`, public on-chain.
+  - Signal per coin = the whales' net notional / Hyperliquid open interest (`metaAndAssetCtxs`).
+- **Book:** long 5 / short 5 among the Binance top-30 coins the whales hold (legs shrink if fewer qualify), 7 slices,
+  funding. `data/whale_watch/`, `GET /api/whale_watch/status`, a plan-page card.
+- **Live check (2026-09-28):** 100 whales holding 84 coins, heavily net short the majors (BTC −12%, ETH −20%, SOL −20%
+  of OI).
+
+**Goal odds with the smart-money book (`backend/goal_lab.py`).** EUR 500 + a monthly deposit → EUR 10,000.
+- Daily returns 2022-01 .. now, 30-day block bootstrap, 5,000 paths. The plan is at level 2; plan + smart money is
+  scaled to the same volatility (32%).
+  - Plan: +50%/yr, Sharpe 1.43, max DD −29%.
+  - Plan + smart money: +79%/yr, Sharpe 1.97, max DD −21%.
+
+| Deposit | Saving alone | Plan: 10k within 24 months, median | + smart money: within 24 months, median | Below deposits at 24 months (plan / + smart) |
+|---|---|---|---|---|
+| 100/month | 95 months | 3%, 31 months | 10%, 30 months | 6% / 1% |
+| 300/month | 32 months | 74%, 21 months | 92%, 19 months | 6% / 1% |
+| 500/month | 19 months | 100%, 15 months | 100%, 14 months | 7% / 1% |
+
+- Backtest odds overstate live results. The deposit rate still matters most; the book mainly cuts the bad outcomes.
+
+**Gold/silver ratio (`backend/gold_silver_lab.py`).** log(GLD/SLV) 3-year z-score. Enter at |z| > 1.5, exit below 0.25,
+vol-sized legs. Sharpe 0.15 (2009–16) / −0.46 (2017+); with Binance funding −0.06 / −0.59. The always-on version is the
+same. Fails.
+
 **Insider buying across all US stocks (`backend/insider_lab.py`).** SEC Insider Transactions Data Sets 2008–2026Q1:
 officer/director open-market purchases ≥ $25k, one signal per company per 30 days.
 - **Data.** 52,050 signals 2010+ from 8,500 companies.
