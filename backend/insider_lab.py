@@ -124,19 +124,27 @@ def prices():
                                                                "tried": set()}
     todo = [t for t in tickers if t not in have["tried"]]
     print(f"{len(ev)} signals, {len(tickers)} tickers, {len(todo)} to download", flush=True)
-    import yfinance.shared as yfs
+    import logging
+
+    class Catch(logging.Handler):                     # yfinance only logs failures; watch for throttling
+        def __init__(self):
+            super().__init__()
+            self.text = []
+
+        def emit(self, record):
+            self.text.append(record.getMessage())
+    catch = Catch()
+    logging.getLogger("yfinance").addHandler(catch)
     for i in range(0, len(todo), 50):
         batch = todo[i:i + 50]
+        catch.text = []
         try:
             d = yf.download(batch, start="2009-06-01", progress=False, auto_adjust=False, actions=True, threads=4)
         except Exception as e:                       # noqa: BLE001 - a failed batch is retried on the next run
             print(f"  batch failed: {e}")
             time.sleep(60)
             continue
-        limited = {t for t, e in yfs._ERRORS.items() if "Rate" in str(e) or "Too Many" in str(e)}
-        if limited:                                  # Yahoo is throttling: keep those tickers for the next run
-            print(f"  rate-limited on {len(limited)} tickers; pausing", flush=True)
-            time.sleep(120)
+        throttled = any("RateLimit" in t or "Too Many" in t for t in catch.text)
         close, raw, vol, spl = {}, {}, {}, {}
         for t in batch:
             try:
@@ -149,9 +157,14 @@ def prices():
         for k, v in (("close", close), ("raw", raw), ("volume", vol), ("splits", spl)):
             if v:
                 have[k] = pd.concat([have[k], pd.DataFrame(v)], axis=1)
-        have["tried"] |= set(batch) - limited
+        # tickers without data in a throttled batch are retried on the next run
+        have["tried"] |= set(close) if throttled else set(batch)
         pd.to_pickle(have, path)
-        time.sleep(3)
+        if throttled:
+            print("  Yahoo is throttling; pausing 5 minutes", flush=True)
+            time.sleep(300)
+        else:
+            time.sleep(3)
         print(f"  {i + len(batch)}/{len(todo)}: {have['close'].shape[1]} with prices", flush=True)
 
 

@@ -36,10 +36,10 @@ CACHE = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "p
 TOP_N, LEGS, COST, SPLIT = 30, 6, 0.001, "2024-01-01"
 
 
-def universe():
+def universe(n: int = None):
     last_month = time.strftime("%Y-%m", time.gmtime(time.time() - 32 * 86_400))
     panel = daily_panel(last_month)
-    top = top_by_volume(panel["qvol"], panel["close"], TOP_N).loc["2021-12-01":]
+    top = top_by_volume(panel["qvol"], panel["close"], n or TOP_N).loc["2021-12-01":]
     return panel["close"], top
 
 
@@ -84,9 +84,9 @@ def metrics() -> pd.DataFrame:
     return pd.read_csv(path, parse_dates=["day"]) if os.path.exists(path) else pd.DataFrame(columns=["sym", "day"])
 
 
-def collect(full: bool = False):
+def collect(full: bool = False, n: int = None):
     os.makedirs(CACHE, exist_ok=True)
-    close, top = universe()
+    close, top = universe(n)
     need = needed(close, top, full)
     have = metrics()
     done = set(zip(have["sym"], pd.to_datetime(have["day"])))
@@ -100,8 +100,8 @@ def collect(full: bool = False):
         print(f"  {min(i + 2000, len(todo))}/{len(todo)}", flush=True)
 
 
-def signals():
-    close, top = universe()
+def signals(n: int = None):
+    close, top = universe(n)
     idx = close.loc["2022-01-01":].index
     m = metrics()
     wide = {c: m.pivot_table(index="day", columns="sym", values=c).reindex(pd.date_range(idx[0] - pd.Timedelta(days=7), idx[-1]))
@@ -226,4 +226,5 @@ def robust():
 
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "main"
-    {"collect": collect, "collect_full": lambda: collect(True), "main": main, "robust": robust}[cmd]()
+    {"collect": collect, "collect_full": lambda: collect(True), "collect_full50": lambda: collect(True, 50),
+     "main": main, "robust": robust}[cmd]()

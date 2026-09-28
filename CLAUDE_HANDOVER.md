@@ -613,12 +613,35 @@ perp, the long/short ratio of its top traders (by position) and of all accounts 
 - **Correlation** with the crypto trend book −0.02, with TradFi −0.05.
 - **Plan + book** (equal risk, weights from 2022-01 .. 2024-06, 7-slice version with funding). Sharpe 1.06 → 1.68
   for 2022–24H1 and 1.75 → 2.27 for 2024-07 on. Max DD −25% → −18% and −23% → −17%.
+- **Universe check: top 50** (`collect_full50`). The price effect is concentrated in the 30 most-traded coins.
+  - Top 50, 6 per leg, 7 slices: price only 0.29 / 0.21; with funding 0.92 / 0.70.
+  - Ranks 31–50 alone: 0.30 / 0.06 with funding.
+  - Top 50, 10 per leg, with funding: 1.02 / 1.01. Plan + this cautious version: 1.06 → 1.32 and 1.75 → 2.20.
+  - Plausible (big traders matter where the volume is), but a fragility flag.
 - **Caveats.**
   - It is the one survivor of ~70 ideas: a multiple-testing risk that t 2.75 does not remove.
+  - The price part depends on the top-30 cut-off (above).
   - 2022 was flat. Binance could change how it defines "top traders".
   - Funding income depends on crowded shorts persisting.
 - **Decision: forward paper test first** (`backend/smart_watch.py`, below). No real money until it has a few months
   of live evidence.
+
+**Insider buying across all US stocks (`backend/insider_lab.py`).** SEC Insider Transactions Data Sets 2008–2026Q1:
+officer/director open-market purchases ≥ $25k, one signal per company per 30 days.
+- **Data.** 52,050 signals 2010+ from 8,500 companies.
+  - 53% priced and matched: the Yahoo close must be within 20% of the insider's own price, with splits undone, which
+    drops reused tickers. Delisted companies are missing.
+  - Yahoo throttles bulk downloads; the script detects this from yfinance's log and retries.
+- **Result, 60-day return minus IWM after 0.5% costs, 2010–18 / 2019+.**
+  - All: +0.7% (t 3.8) / +0.3% (t 1.1). Fails the rule (t ≥ 2 after 2019).
+  - Small firms: +0.9% / +0.8% (t 2.0). CEO/CFO buyers: +0.3% / +0.6%. Clusters (3+ insiders): +1.0% / +0.6% (t ≤ 1).
+  - The "opportunistic" split changes nothing.
+  - Insiders buy after declines: the control window was −0.9% to −2.1% in 2019+.
+- **Portfolio**, hedged with IWM.
+  - All: +5.0% / +4.6% a year, Sharpe 0.75 / 0.63, but ~400 positions at once.
+  - Clusters: 22 positions, Sharpe 0.51 / 0.32.
+- **Verdict.** Real but decayed. Usable only with hundreds of small positions plus a hedge, so not for a €500
+  account. Rejected.
 
 **Smart-money watch, live and paper only (`backend/smart_watch.py`).** It mirrors the 7-slice version, using live
 Binance public endpoints (no key).
@@ -635,6 +658,16 @@ Binance public endpoints (no key).
 **Bottom line (2026-09-25).** Nothing tested beats the live 8-coin trend strategy out of sample. Its ceiling is roughly
 2× a year at ~5% risk per trade with deep drawdowns; ~1% risk (+30%/yr, −26% drawdown) is the sane setting, 2–3% if
 the user accepts deeper drawdowns for the deposit plan.
+
+**Update (2026-09-28).** The plan (crypto trend + TradFi trend) is still what runs. One new candidate passed its
+pre-registered backtest: the smart-money positioning book (`positioning_lab.py`). It is market-neutral, nearly
+uncorrelated with the plan, and raised the plan's Sharpe from 1.75 to 2.2–2.3 after 2024-07 in backtests. But:
+- it is one survivor of ~70 ideas;
+- its price effect lives in the top 30 coins only;
+- about half its return is funding income.
+
+It runs as a paper-only forward test (`smart_watch.py`). Only after a few months of live paper evidence should it be
+considered as a third book in the plan.
 
 ---
 
