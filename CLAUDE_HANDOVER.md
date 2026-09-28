@@ -623,8 +623,61 @@ perp, the long/short ratio of its top traders (by position) and of all accounts 
   - The price part depends on the top-30 cut-off (above).
   - 2022 was flat. Binance could change how it defines "top traders".
   - Funding income depends on crowded shorts persisting.
+- **Independent check with OKX traders (`backend/okx_positioning_lab.py`, 2026-09-28).**
+  - OKX publishes its own top-trader position ratio and all-account ratio per swap (daily, from 2024-02). Same
+    Binance top-30 book, OKX signal used about a day late.
+  - OKX signal, 2024-02 .. 2026-09: price only Sharpe 0.65 (halves 1.00 / 0.49). With funding 1.23 (halves 1.14 /
+    1.37).
+  - Binance signal over the same days: 1.01 / 1.50.
+  - The two signals correlate only +0.43 across coins, yet both pick winners. A different set of traders confirming
+    the effect makes luck much less likely.
+  - Averaging both signals is not better than Binance alone (1.12 with funding).
+  - Coin-margined Binance metrics have no ratios. Gate.io keeps only 180 days.
 - **Decision: forward paper test first** (`backend/smart_watch.py`, below). No real money until it has a few months
   of live evidence.
+
+**On-chain fundamentals from DefiLlama (`backend/defi_flow_lab.py`).** Same 7-slice book, point-in-time top 150 perps.
+Figures are Sharpe with funding, 2022–23 / 2024+.
+- **Chains:** 28-day growth of each chain's stablecoin supply (in dollars, so price-free), ~70 chains mapped to
+  their coins (MATIC→POL, FTM→S, KLAY→KAIA chained), 5 per leg. 0.04 / 0.39. Fails.
+- **Protocol fees:** fees of the last 28 days vs the 28 before, ~130 tokens, 8 per leg. 0.85 / −0.02. It worked in
+  2022–23 and stopped. Fails.
+- Caveat: DefiLlama backfills history when it adds a protocol, so the set of protocols is today's.
+
+**Smart-money signal as a trend entry filter (`backend/smart_filter_lab.py`).** Skip breakouts on coins whose gap is
+below the day's top-30 median, 2022+.
+- Unfiltered Sharpe 0.87 / 1.32 (2022–23 / 2024+). Filtered 0.93 / 1.10. Random skipping gives 0.32–1.00 /
+  0.71–1.04.
+- Fails. The signal ranks coins against each other; it does not time entries.
+
+**Futures positioning from the CFTC Commitments of Traders (`backend/cot_lab.py`).** Legacy reports 1986+, 25 markets
+priced by ETFs (metals, energy, grains, sugar, US indices, Treasuries, currencies), 2008+.
+- **Hedging pressure passes (pre-registered).** Weekly, long the top third by speculators' 52-week-average net
+  position, short the bottom third. Sharpe 0.70 (2008–16) and 0.76 (2017+), +5–6%/yr. The opposite sign is −0.71 /
+  −0.77.
+  - Robust: 13/26/104-week averages are all positive in both periods (0.34–0.85); a one-week-older signal is the
+    same; commodities alone 0.30 / 0.84; financials alone 0.67 / 0.76.
+  - By year it is positive in 16 of 20 years. Correlation with the plan's books is about 0.
+  - Plan + this book (weekly): Sharpe 1.57 → 1.89 (2020-06 .. 2024-06) and 1.71 → 2.31 (2024-07+).
+- **Not usable at the user's size.** It needs all 25 markets long and short (futures or margin). On the 9 markets
+  Binance lists as TradFi perps it does not work: −0.36 / 0.16 (0.30 / 0.38 with natural gas). Parked until the account
+  can hold micro futures.
+- **Crowding overlay on the TradFi book** (skip longs when speculators' net position is above a 3-year z-score of
+  1.5): plan 1.67 / 1.74 → 1.59 / 1.63. Rejected.
+
+**Options-expiration week (`backend/opex_lab.py`).** SPY 1993+, QQQ 1999+. OPEX week vs other weeks: SPY +0.14%
+(t 0.7) then −0.20% (t −1.1); QQQ +0.05% then −0.21%. The week after flips sign too. Nothing.
+
+**Lottery coins and leverage crowding (`backend/xs_anomaly_lab.py`).** Top-30 7-slice book, Sharpe with funding
+2022–23 / 2024+.
+- Short the coins with the biggest daily jump in 30 days, long the dullest: 0.35 / −0.57, max DD −85%. Fails.
+- Short high open interest relative to volume: −0.66 / 0.03. The reverse sign is not consistent either. Fails.
+
+**Coinbase premium across coins (`backend/cb_premium_lab.py`).** 7-day mean of log(Coinbase USD close / Binance spot
+close) for top-30 coins that also trade on Coinbase (~21 a day). 7 slices, 4 per leg, funding.
+- 2022–23: Sharpe −0.45. 2024+: 1.20 (price only 1.53). Correlation with the smart-money signal −0.02.
+- Fails the rule. The 2024+ strength coincides with the US spot ETFs, but that explanation came after seeing the
+  data. Could be watched on paper, not traded.
 
 **Insider buying across all US stocks (`backend/insider_lab.py`).** SEC Insider Transactions Data Sets 2008–2026Q1:
 officer/director open-market purchases ≥ $25k, one signal per company per 30 days.
