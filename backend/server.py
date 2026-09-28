@@ -581,6 +581,16 @@ def get_unlock_watch_status():
     from backend.unlock_watch import unlock_watch
     return unlock_watch.status()
 
+@app.on_event("startup")
+def startup_smart_watch():
+    from backend.smart_watch import smart_watch
+    smart_watch.start()
+
+@app.get("/api/smart_watch/status")
+def get_smart_watch_status():
+    from backend.smart_watch import smart_watch
+    return smart_watch.status()
+
 @app.get("/api/news_guard/status")
 def get_news_guard_status():
     from backend.news_guard import news_guard

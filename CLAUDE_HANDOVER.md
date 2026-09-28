@@ -577,6 +577,61 @@ share.
   skill signal.
 - Rejected.
 
+**Smart money vs the crowd (`backend/positioning_lab.py`) — the one candidate that passed.** Binance publishes, per
+perp, the long/short ratio of its top traders (by position) and of all accounts (data.binance.vision daily
+`metrics` files, 5-minute rows). Market-neutral book on the point-in-time top 30 USDT perps by 30-day volume
+(delisted included), 2022-01 .. 2026-09.
+- **Pre-registered rule.** Signal = 3-day mean of log(top-trader position ratio) − log(all-account ratio). Weekly:
+  long the 6 highest, short the 6 lowest, 0.1% per unit of turnover. Pass = Sharpe > 0.5 in 2022–23 and 2024+.
+  - Smart money: Sharpe 0.64 / 1.13 (passes). Taker buying 1.63 / 0.32 (fails). OI growth −0.37 / −0.29 (fails).
+- **Robustness.** Figures are 2022–23 / 2024+ Sharpe.
+
+  | Variant | Sharpe |
+  |---|---|
+  | With real funding (longs pay positive rates) | 1.24 / 1.47 |
+  | Signal one day older | 0.81 / 1.04 |
+  | 1-day signal | 1.20 / 0.92 |
+  | 4 coins per leg | 0.50 / 0.84 |
+  | 10 coins per leg | 1.02 / 0.83 |
+  | Past 7-day return instead (momentum) | 0.10 / 0.65 |
+  | Smart, momentum removed | 0.68 / 1.14 |
+  | Smart, funding signal removed (+funding) | 0.84 / 0.82 |
+  | Cross-sectional funding carry alone (+funding) | 0.29 / 0.33 |
+  | Double costs (+funding) | 1.11 / 1.37 |
+
+  - **Both legs work.** Long leg vs the average coin: 0.37 / 1.00. Short leg, inverted: 1.12 / 0.97.
+  - **Weekday luck.** The pre-registered weekday was a lucky one. Other rebalance weekdays: −0.20 to 0.85 (2022–23)
+    and 0.35 to 1.03 (2024+).
+- **Fair version: 7 daily slices**, each rebalanced weekly on its own weekday; same as holding the average of the
+  last 7 daily portfolios.
+  - Price only: 0.41 / 0.97.
+  - With funding: 1.11 / 1.45 (+21% / +55% a year, max DD −18% / −28%). Weekly t-stat 2.75.
+  - By year: 2022 +3%, 2023 +42%, 2024 +17%, 2025 +96%, 2026 +40%.
+  - Signal one day older: 1.05 / 1.46. 10 per leg: 1.33 / 1.31.
+- **Funding is a large share.** The long leg holds coins the crowd shorts, which paid longs ~29%/yr on average. The
+  short leg's coins had ~+3%/yr funding. The book collects funding on both sides (~+10%/yr net).
+- **Correlation** with the crypto trend book −0.02, with TradFi −0.05.
+- **Plan + book** (equal risk, weights from 2022-01 .. 2024-06, 7-slice version with funding). Sharpe 1.06 → 1.68
+  for 2022–24H1 and 1.75 → 2.27 for 2024-07 on. Max DD −25% → −18% and −23% → −17%.
+- **Caveats.**
+  - It is the one survivor of ~70 ideas: a multiple-testing risk that t 2.75 does not remove.
+  - 2022 was flat. Binance could change how it defines "top traders".
+  - Funding income depends on crowded shorts persisting.
+- **Decision: forward paper test first** (`backend/smart_watch.py`, below). No real money until it has a few months
+  of live evidence.
+
+**Smart-money watch, live and paper only (`backend/smart_watch.py`).** It mirrors the 7-slice version, using live
+Binance public endpoints (no key).
+- **Daily, after 00:05 UTC:**
+  - The universe is the top 30 by 30-day quote volume among the 60 busiest perps (60+ days listed).
+  - Signal = mean over the last 72 hourly values of `topLongShortPositionRatio` vs `globalLongShortAccountRatio`.
+  - Long 6 / short 6 each day; the book holds the average of the last 7 days' portfolios.
+- **Paper P&L** uses daily closes, real funding (`/fapi/v1/fundingRate`) and 0.1% per unit of turnover.
+- **Outputs.** A Telegram summary on Sundays. `data/smart_watch/state.json` and `history.csv`.
+  `GET /api/smart_watch/status` feeds a card on the plan page.
+- **Tested** with a mocked Binance API: picks, market neutrality, 7-day build-up, restart, missed days. Also a live
+  server smoke test. Binance is geo-blocked from the research server, so it only runs for real on the user's PC.
+
 **Bottom line (2026-09-25).** Nothing tested beats the live 8-coin trend strategy out of sample. Its ceiling is roughly
 2× a year at ~5% risk per trade with deep drawdowns; ~1% risk (+30%/yr, −26% drawdown) is the sane setting, 2–3% if
 the user accepts deeper drawdowns for the deposit plan.
