@@ -879,6 +879,25 @@ perp funding (gold via PAXG).
   - The TradFi perps only exist since 2026.
   - A few huge years (2021 crypto, 2024-25 gold and silver) drive the compounding.
 
+**No-hindsight history (`honest_lab.py`, 2026-09-29).** Same plan with the hindsight removed:
+- **Coins:** each month, the 8 busiest coins by 30-day volume among everything Binance listed at the time, dead coins
+  included. Spot before 2020, futures after, TradFi perps excluded. 84 coins qualified at some point.
+- **Settings:** walk-forward from 2019. Each January, the best of 18 settings on all earlier data.
+- **TradFi funding:** max(2025-26 rate, T-bill + 2%).
+
+Results:
+
+| | +%/yr since 2015 | Max drawdown | €500 + €300/month after 24 months: median / worst / best | Below paid-in | ≥ €10k |
+|---|---|---|---|---|---|
+| Level 1 | +14% | −48% | €9.9k / €6.1k / €14.8k | 24% | 48% |
+| Level 2 | +21% | −72% | €11.9k / €4.8k / €22.0k | 24% | 63% |
+| Level 3 | +21% | −84% (2022: −69%) | €13.1k / €3.7k / €27.7k | 27% | 65% |
+
+- Level 3 adds no yearly return over level 2, only deeper drawdowns (volatility drag).
+- Walk-forward re-tuning did worse than keeping the textbook 120/60/4 setting in 2021-23 (e.g. 2021: −20% vs +59% at
+  level 3). More evidence against re-fitting.
+- The hindsight version (history_lab) overstated returns roughly 4×.
+
 **Update (2026-09-28).** The plan (crypto trend + TradFi trend) is still what runs. One new candidate passed its
 pre-registered backtest: the smart-money positioning book (`positioning_lab.py`). It is market-neutral, nearly
 uncorrelated with the plan, and raised the plan's Sharpe from 1.75 to 2.2–2.3 after 2024-07 in backtests. But:
