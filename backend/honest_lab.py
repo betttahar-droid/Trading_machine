@@ -39,6 +39,15 @@ SPOT = "data/spot/monthly/klines"
 TOP = 8
 STABLE = {"USDC", "BUSD", "TUSD", "PAX", "USDS", "USDSB", "USDP", "FDUSD", "DAI", "EUR", "GBP", "AUD", "UST", "USDE",
           "SUSD", "BKRW", "IDRT", "BIDR", "AEUR", "ERD"}
+# Binance "TradFi" perps (stocks, ETFs, metals, energy; listed from 2025-12): not coins, kept out of the crypto book
+TRADFI = set("""XAU XAG XPD XPT XAUT PAXG COPPER NATGAS BZ CL TSLA AMZN COIN CRCL HOOD INTC MSTR PLTR EWJ EWY GOOGL META
+NVDA AAPL AVGO BABA MSFT MU QQQ SNDK SPY TSM AMD ARM BILL BRKB CBRS COHR CRWV CSCO DIS DRAM FLNC HD JPM LITE MRVL NBIS
+OPENAI ORCL QCOM RKLB SOXL SPCX UBER WDC WMT AAOI ADBE ALAB AMAT ANTHROPIC ASML ASTS AXTI BMNR CIEN COST CRDO CRM CRWD
+DELL DKNG EBAY EWT EWZ GLW GME HIMS HPE HYUNDAI IBM IREN IWM KLAC KORU LLY LRCX NFLX NOK NOW NVO ONDS RIVN SAMSUNG
+SKHYNIX SLX SMCI SONY SQQQ TQQQ URNM UVXY XLE ZM APP BITO GEV GS HK0700 HK1810 MINIMAX MUU PANW POPMART PYPL SMH SNOW
+SOFI SOXS STRC TBT TENCENT TMF TTWO TXN TZA XBI ZHIPU CSOPSAMSUNG2L CSOPSKHYNIX2L CXMT DJT GDX GIGADEV HANMI IONQ
+KODEX200 KUAISHOU LGELECTRONICS MARA MEITUAN MRK MRNA NAVER NET PDD RDDT SAMSUNGEM SHOP SKDD SKUU TEM UNITREE ZHONGJI
+SKHY SNXX KSTR CHIP""".split())
 GRID = [(e, x, s) for e in (60, 120, 180) for x in (30, 60) for s in (3.0, 4.0, 5.0)]
 TEXTBOOK = (120, 60, 4.0)
 FUNDING = dict(FUNDING_2026, GLD=0.04)
@@ -117,6 +126,7 @@ def membership(spot: dict, fut: dict) -> pd.DataFrame:
     history = close.notna().cumsum().shift(1) >= 60
     vol = vol.where(history & close.notna())
     first = vol.index.to_series().dt.is_month_start
+    vol = vol[[c for c in vol.columns if c[:-4] not in TRADFI]]
     top = vol[first].rank(axis=1, ascending=False, method="first") <= TOP
     return top.reindex(vol.index).ffill().fillna(False).astype(bool)
 
