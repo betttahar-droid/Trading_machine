@@ -866,6 +866,19 @@ Binance public endpoints (no key).
 2× a year at ~5% risk per trade with deep drawdowns; ~1% risk (+30%/yr, −26% drawdown) is the sane setting, 2–3% if
 the user accepts deeper drawdowns for the deposit plan.
 
+**Year-by-year history since 2015 (`history_lab.py`, 2026-09-29).** The live rules at levels 1-3. Crypto uses Binance
+spot 4h candles for 2017-08..2019 (no Binance before that) and futures after. TradFi uses the ETFs from 2015 with 2025-26
+perp funding (gold via PAXG).
+- Level 3 plan by year:
+  - 2015 −9%, 2016 −30%, 2017 +121%, 2018 −25%, 2019 +122%, 2020 +120% (−63% drawdown in March), 2021 +642%.
+  - 2022 −44%, 2023 +92%, 2024 +407%, 2025 +277%, 2026 to September +12%.
+  - Whole period: +78%/yr, max drawdown −63%.
+- Level 1: +34%/yr, max drawdown −44%. Level 2: +62%/yr, max drawdown −60%.
+- Caveats:
+  - The coins are today's survivors, chosen with hindsight.
+  - The TradFi perps only exist since 2026.
+  - A few huge years (2021 crypto, 2024-25 gold and silver) drive the compounding.
+
 **Update (2026-09-28).** The plan (crypto trend + TradFi trend) is still what runs. One new candidate passed its
 pre-registered backtest: the smart-money positioning book (`positioning_lab.py`). It is market-neutral, nearly
 uncorrelated with the plan, and raised the plan's Sharpe from 1.75 to 2.2–2.3 after 2024-07 in backtests. But:
