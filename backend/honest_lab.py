@@ -217,7 +217,7 @@ def main():
     member = member[[s for s in member.columns if s in market]]
     print(f"{len(market)} coins were ever in the monthly top {TOP} ({time.time() - t0:.0f}s)")
     for y in range(2017, int(last_month[:4]) + 1):
-        picks = member[str(y)].any()
+        picks = member.loc[str(y)].any()
         print(f"  {y}: " + " ".join(s.replace("USDT", "") for s in picks[picks].index))
 
     strategy_lab.START = "2017-09-01"
