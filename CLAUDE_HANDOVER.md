@@ -898,6 +898,23 @@ Results:
   level 3). More evidence against re-fitting.
 - The hindsight version (history_lab) overstated returns roughly 4×.
 
+**Plan vs a world ETF (`honest_lab.py compare`, 2026-09-30).** The no-hindsight plan compared with buying IWDA
+(iShares Core MSCI World, EUR) every month.
+
+| | %/yr since 2015 | Worst fall | Losing years | 2 years of €500 + €300/month: median, share below paid-in | 5 years: median, share below paid-in |
+|---|---|---|---|---|---|
+| World ETF | +11.8% | −34% | 2/11 | €8.7k, 4% | €24.9k, 0% |
+| Plan level 1 | +14.4% | −48% | 4/11 | €9.3k, 25% | €26.5k, 12% |
+| Plan level 2 | +21.0% | −72% | 5/11 | €10.5k, 26% | €31.5k, 17% |
+| 90% ETF + 10% plan L2 | +13.8% | −36% | 2/11 | €8.9k, 10% | €26.2k, 0% |
+| 80% ETF + 20% plan L2 | +15.6% | −39% | 2/11 | €9.2k, 16% | €27.5k, 0% |
+
+- The plan's good years (2017, 2020, 2025) came when stocks were weak, so a small slice raises the ETF's return at little
+  extra drawdown.
+- Caveats: plan returns are in USD and the ETF in EUR; the 10-year windows have only ~20 start dates.
+- Advice given: ETF as the core, the bot as a ≤10–20% satellite at level 2 at most, and only after the paper test and
+  a check of Belgian access and tax rules for Binance futures.
+
 **Update (2026-09-28).** The plan (crypto trend + TradFi trend) is still what runs. One new candidate passed its
 pre-registered backtest: the smart-money positioning book (`positioning_lab.py`). It is market-neutral, nearly
 uncorrelated with the plan, and raised the plan's Sharpe from 1.75 to 2.2–2.3 after 2024-07 in backtests. But:
