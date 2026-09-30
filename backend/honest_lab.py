@@ -13,7 +13,8 @@ What history_lab.py knew in advance, and what this lab does instead:
   funding    2025-26 funding rates for gold/silver/S&P/Nasdaq perps, which did not exist before 2026
              -> each asset pays max(its 2025-26 rate, 3-month US T-bill + 2%) a year on what it holds.
 
-    python -m backend.honest_lab
+    python -m backend.honest_lab            # year-by-year plan at levels 1-3
+    python -m backend.honest_lab compare    # vs buying a world ETF every month, and ETF + plan mixes
 """
 
 import io
@@ -217,7 +218,8 @@ def deposit_paths(r: pd.Series, deposit: float = 300.0, months: int = 24) -> pd.
     return pd.Series(out)
 
 
-def main():
+def plan_returns(levels=(1, 2, 3), verbose: bool = True) -> dict:
+    """level -> (plan, crypto walk-forward, crypto live setting, tradfi) daily returns since 2015."""
     t0 = time.time()
     last_month = time.strftime("%Y-%m", time.gmtime(time.time() - 32 * 86_400))
     spot = spot_daily()
@@ -225,22 +227,24 @@ def main():
     member = membership(spot, fut)
     market = crypto_market(member, last_month)
     member = member[[s for s in member.columns if s in market]]
-    print(f"{len(market)} coins were ever in the monthly top {TOP} ({time.time() - t0:.0f}s)")
-    for y in range(2017, int(last_month[:4]) + 1):
-        picks = member.loc[str(y)].any()
-        print(f"  {y}: " + " ".join(s.replace("USDT", "") for s in picks[picks].index))
+    if verbose:
+        print(f"{len(market)} coins were ever in the monthly top {TOP} ({time.time() - t0:.0f}s)")
+        for y in range(2017, int(last_month[:4]) + 1):
+            picks = member.loc[str(y)].any()
+            print(f"  {y}: " + " ".join(s.replace("USDT", "") for s in picks[picks].index))
 
     strategy_lab.START = "2017-09-01"
     base = {g: crypto_stream(market, member, *g, 1) for g in GRID}
-    print(f"grid run ({time.time() - t0:.0f}s)")
     years = list(range(2015, int(last_month[:4]) + 1))
     pick = walk_forward(base, years)
-    print("walk-forward settings (entry/exit bars, stop ATR): " +
-          ", ".join(f"{y}: {e}/{x}/{s:.0f}" for y, (e, x, s) in pick.items() if y >= 2017))
+    if verbose:
+        print(f"grid run ({time.time() - t0:.0f}s)")
+        print("walk-forward settings (entry/exit bars, stop ATR): " +
+              ", ".join(f"{y}: {e}/{x}/{s:.0f}" for y, (e, x, s) in pick.items() if y >= 2017))
     px = etf_prices("2013-06-01")
     rate = tbill()
-
-    for level in (1, 2, 3):
+    out = {}
+    for level in levels:
         need = {g for y, g in pick.items() if y >= 2017}
         streams = {g: crypto_stream(market, member, *g, level) for g in need}
         live = crypto_stream(market, member, *TEXTBOOK, level)
@@ -248,11 +252,16 @@ def main():
         c = pd.Series(0.0, index=days)
         for y in years:
             if y >= 2017:
-                s = streams[pick[y]].reindex(days).fillna(0.0)
-                c[str(y)] = s[str(y)]
-        live = live.reindex(days).fillna(0.0)
+                c[str(y)] = streams[pick[y]].reindex(days).fillna(0.0)[str(y)]
         t = tradfi_returns(px, level, rate).reindex(days).fillna(0.0)
-        plan = c + t
+        out[level] = (c + t, c, live.reindex(days).fillna(0.0), t)
+    return out
+
+
+def main():
+    years = None
+    for level, (plan, c, live, t) in plan_returns().items():
+        years = sorted(set(plan.index.year))
         print(f"\nLEVEL {level}  year | crypto top-{TOP} walk-fwd | (live setting) | tradfi | PLAN | worst drop | EUR 500 since 2015")
         eq = 500.0
         for y in years:
@@ -267,5 +276,42 @@ def main():
               f"worst {dp.min():,.0f}, best {dp.max():,.0f}, below paid-in {np.mean(dp < 7700):.0%}, >= 10k {np.mean(dp >= 10_000):.0%}")
 
 
+def world_etf() -> pd.Series:
+    """Daily EUR returns of a world equity ETF a Belgian investor can buy: iShares Core MSCI World (IWDA, Amsterdam),
+    accumulating, 0.20%/yr fee already inside the price."""
+    import yfinance as yf
+    px = yf.download("IWDA.AS", start="2014-06-01", progress=False, auto_adjust=True)["Close"]
+    px = px.iloc[:, 0] if isinstance(px, pd.DataFrame) else px
+    return px.dropna().pct_change().dropna()
+
+
+def compare():
+    """Plan (no hindsight) vs simply buying a world ETF every month, and mixes of the two (80/20, 90/10)."""
+    plans = plan_returns((1, 2), verbose=False)
+    etf = world_etf()
+    days = plans[1][0].index
+    etf_d = etf.reindex(days).fillna(0.0)          # calendar days, 0 on weekends/holidays
+    books = {"World ETF (IWDA)": etf_d, "Plan level 1": plans[1][0], "Plan level 2": plans[2][0],
+             "90% ETF + 10% plan L2": 0.9 * etf_d + 0.1 * plans[2][0],
+             "80% ETF + 20% plan L2": 0.8 * etf_d + 0.2 * plans[2][0]}
+    years = sorted(set(days.year))
+    print("year   " + " | ".join(f"{k:>22s}" for k in books))
+    for y in years:
+        print(f"{y}{'*' if y == years[-1] else ' '}  " + " | ".join(f"{(1 + r[str(y)]).prod() - 1:+22.0%}" for r in books.values()))
+    print()
+    for name, r in books.items():
+        e = (1 + r).cumprod()
+        yr = e.iloc[-1] ** (365 / len(r)) - 1
+        dd = (e / e.cummax() - 1).min()
+        line = f"{name:24s} {yr:+5.1%}/yr since 2015, worst fall {dd:+5.0%}, losing years {sum((1 + r[str(y)]).prod() < 1 for y in years[:-1])}/{len(years) - 1}"
+        for months, paid in ((24, 7_700), (60, 18_500), (120, 36_500)):
+            dp = deposit_paths(r["2015-01-01":], months=months)
+            if len(dp):
+                line += (f" | {months // 12}y (paid {paid:,}): median {dp.median():,.0f}, worst {dp.min():,.0f}, "
+                         f"below paid-in {np.mean(dp < paid):.0%}")
+        print(line)
+
+
 if __name__ == "__main__":
-    main()
+    import sys
+    compare() if len(sys.argv) > 1 and sys.argv[1] == "compare" else main()
