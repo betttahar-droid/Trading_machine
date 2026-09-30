@@ -915,6 +915,20 @@ Results:
 - Advice given: ETF as the core, the bot as a ≤10–20% satellite at level 2 at most, and only after the paper test and
   a check of Belgian access and tax rules for Binance futures.
 
+**3-year view with the user's full savings (2026-09-30).** €500 + €1,560/month for 36 months (€56.7k paid in),
+using the no-hindsight streams and 72 start months since 2017-10. The windows overlap heavily.
+
+| | Median | Worst | Best | Below paid-in | ≥ €100k | ≥ €250k |
+|---|---|---|---|---|---|---|
+| World ETF | €69k | €61k | €78k | 0% | 0% | 0% |
+| 80% ETF + 20% bot L2 | €76k | €56k | €93k | 7% | 0% | 0% |
+| Bot L1 | €78k | €43k | €131k | 26% | 14% | 0% |
+| Bot L2 | €97k | €34k | €234k | 29% | 49% | 0% |
+| Bot L3 | €105k | €27k | €304k | 31% | 51% | 6% |
+
+- Required returns: €100k needs +42%/yr, €250k needs +131%/yr, €1M needs +332%/yr.
+- Advice given: the ETF as the base, the bot as a fixed slice, and income (MediGuide Pro) as the real 3-year lever.
+
 **Update (2026-09-28).** The plan (crypto trend + TradFi trend) is still what runs. One new candidate passed its
 pre-registered backtest: the smart-money positioning book (`positioning_lab.py`). It is market-neutral, nearly
 uncorrelated with the plan, and raised the plan's Sharpe from 1.75 to 2.2–2.3 after 2024-07 in backtests. But:
